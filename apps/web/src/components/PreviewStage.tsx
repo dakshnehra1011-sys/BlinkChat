@@ -1,4 +1,4 @@
-import { ArrowLeft, Loader2, Mic, MicOff, Search, Video, VideoOff } from 'lucide-react';
+import { ArrowLeft, Loader2, Mic, MicOff, Search, Sparkles, Video, VideoOff } from 'lucide-react';
 import type { FC } from 'react';
 import { useEffect, useRef } from 'react';
 import type { CallState } from '../hooks/useWebRTC.js';
@@ -52,39 +52,62 @@ export const PreviewStage: FC<PreviewStageProps> = ({
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '2rem',
+        padding: '2rem 1.5rem',
+        background: 'radial-gradient(circle at 50% 20%, #111827 0%, #06090e 100%)',
       }}
     >
-      {/* Back to Home Navigation Bar */}
+      {/* Navigation Header */}
       <div
         style={{
           width: '100%',
-          maxWidth: '640px',
+          maxWidth: '680px',
           marginBottom: '1rem',
           display: 'flex',
-          justifyContent: 'flex-start',
+          alignItems: 'center',
+          justifyContent: 'space-between',
         }}
       >
         <button
+          type="button"
           className="btn btn-secondary"
           onClick={onBackHome}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontSize: '0.88rem',
+          }}
           title="Back to Landing Page"
         >
           <ArrowLeft size={16} />
           Back to Home
         </button>
+
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.45rem',
+            fontSize: '0.82rem',
+            color: 'var(--text-secondary)',
+            fontWeight: 500,
+          }}
+        >
+          <Sparkles size={14} color="var(--accent-primary)" />
+          Lobby Stage
+        </span>
       </div>
 
       <div
         style={{
           width: '100%',
-          maxWidth: '640px',
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border-color)',
-          borderRadius: 'var(--radius-lg)',
+          maxWidth: '680px',
+          background: 'rgba(17, 24, 39, 0.75)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '24px',
           overflow: 'hidden',
-          boxShadow: 'var(--shadow-lg)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.75)',
         }}
       >
         <div
@@ -92,7 +115,7 @@ export const PreviewStage: FC<PreviewStageProps> = ({
             position: 'relative',
             width: '100%',
             aspectRatio: '16/9',
-            background: '#000',
+            background: '#030712',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -111,7 +134,7 @@ export const PreviewStage: FC<PreviewStageProps> = ({
               style={{
                 position: 'absolute',
                 inset: 0,
-                background: '#0f172a',
+                background: '#090d16',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -119,8 +142,27 @@ export const PreviewStage: FC<PreviewStageProps> = ({
                 color: 'var(--text-muted)',
               }}
             >
-              <VideoOff size={48} />
-              <p style={{ marginTop: '0.75rem', fontWeight: 600 }}>Camera Disabled</p>
+              <div
+                style={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: '50%',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '0.75rem',
+                }}
+              >
+                <VideoOff size={28} color="#f87171" />
+              </div>
+              <p style={{ fontWeight: 600, color: '#f1f5f9' }}>Camera Muted</p>
+              <p
+                style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}
+              >
+                Your video is currently hidden
+              </p>
             </div>
           )}
 
@@ -128,26 +170,30 @@ export const PreviewStage: FC<PreviewStageProps> = ({
           <div
             style={{
               position: 'absolute',
-              bottom: '1rem',
+              bottom: '1.25rem',
               left: '50%',
               transform: 'translateX(-50%)',
               display: 'flex',
               gap: '0.75rem',
-              background: 'rgba(15, 23, 42, 0.75)',
-              backdropFilter: 'blur(8px)',
+              background: 'rgba(15, 23, 42, 0.85)',
+              backdropFilter: 'blur(16px)',
               padding: '0.5rem 1rem',
-              borderRadius: 'var(--radius-full)',
+              borderRadius: '9999px',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5)',
             }}
           >
             <button
-              className={`btn btn-icon ${isAudioMuted ? 'btn-danger' : 'btn-secondary'}`}
+              type="button"
+              className={`dock-btn ${isAudioMuted ? 'dock-btn-danger' : ''}`}
               onClick={onToggleAudio}
               title={isAudioMuted ? 'Unmute' : 'Mute'}
             >
               {isAudioMuted ? <MicOff size={18} /> : <Mic size={18} />}
             </button>
             <button
-              className={`btn btn-icon ${isVideoDisabled ? 'btn-danger' : 'btn-secondary'}`}
+              type="button"
+              className={`dock-btn ${isVideoDisabled ? 'dock-btn-danger' : ''}`}
               onClick={onToggleVideo}
               title={isVideoDisabled ? 'Enable Camera' : 'Disable Camera'}
             >
@@ -156,26 +202,37 @@ export const PreviewStage: FC<PreviewStageProps> = ({
           </div>
         </div>
 
-        <div style={{ padding: '1.5rem', textAlign: 'center' }}>
+        <div style={{ padding: '1.75rem', textAlign: 'center' }}>
           <p
             style={{ color: 'var(--text-secondary)', marginBottom: '1.25rem', fontSize: '0.95rem' }}
           >
-            {statusMessage || 'Camera and microphone preview'}
+            {statusMessage || 'Camera and microphone preview active'}
           </p>
 
           {callState === 'queued' ? (
             <div style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
               <button
+                type="button"
                 className="btn btn-primary"
-                style={{ flex: 1, padding: '0.9rem', fontSize: '1.05rem' }}
+                style={{
+                  flex: 1,
+                  padding: '0.9rem',
+                  fontSize: '1.05rem',
+                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                }}
                 disabled
               >
                 <Loader2 className="animate-spin" size={20} />
                 Looking for a stranger...
               </button>
               <button
+                type="button"
                 className="btn btn-danger"
-                style={{ padding: '0.9rem 1.5rem', fontWeight: 600 }}
+                style={{
+                  padding: '0.9rem 1.5rem',
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius-md)',
+                }}
                 onClick={onCancelQueue}
                 title="Cancel Search"
               >
@@ -184,8 +241,15 @@ export const PreviewStage: FC<PreviewStageProps> = ({
             </div>
           ) : (
             <button
+              type="button"
               className="btn btn-primary"
-              style={{ width: '100%', padding: '0.9rem', fontSize: '1.05rem' }}
+              style={{
+                width: '100%',
+                padding: '0.95rem',
+                fontSize: '1.05rem',
+                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
+              }}
               onClick={onFindStranger}
             >
               <Search size={20} />

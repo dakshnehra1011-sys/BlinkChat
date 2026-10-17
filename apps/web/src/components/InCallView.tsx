@@ -1,4 +1,6 @@
 import {
+  ArrowLeft,
+  Lock,
   MessageSquare,
   Mic,
   MicOff,
@@ -7,8 +9,10 @@ import {
   ShieldAlert,
   SkipForward,
   Smile,
+  Sparkles,
   Video,
   VideoOff,
+  X,
 } from 'lucide-react';
 import type { FC, FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -73,10 +77,26 @@ export const InCallView: FC<InCallViewProps> = ({
     }
   }, [remoteStream]);
 
-  // Auto-scroll chat
+  // Auto-scroll chat on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
+
+  // Keyboard navigation: Escape closes emoji popover if open, or triggers Next Stranger
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showEmojiPicker) {
+          setShowEmojiPicker(false);
+          e.preventDefault();
+        } else {
+          onNextStranger();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showEmojiPicker, onNextStranger]);
 
   // Callback ref for emoji picker custom element
   const setEmojiPickerRef = (node: HTMLElement | null) => {
@@ -113,77 +133,164 @@ export const InCallView: FC<InCallViewProps> = ({
 
   return (
     <div className="call-layout">
-      {/* Video Tile Area */}
+      {/* Studio Cinema Video Stage */}
       <div className="video-container">
+        {/* Top Video Stage Overlay */}
+        <div className="video-stage-topbar">
+          <div className="video-stage-pill">
+            <span className="live-dot" />
+            <span>{remoteStream ? 'Stranger Connected' : 'Connecting...'}</span>
+            <span style={{ opacity: 0.5 }}>•</span>
+            <span style={{ color: 'var(--text-muted)' }}>
+              {remoteStream ? 'HD 60fps' : 'Negotiating'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            className="video-stage-leave-btn"
+            onClick={onLeaveCall}
+            title="Leave call and return to stage"
+          >
+            <ArrowLeft size={16} />
+            Back to Stage
+          </button>
+        </div>
+
         {remoteStream ? (
           <video ref={remoteVideoRef} autoPlay playsInline className="remote-video" />
         ) : (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-            <p style={{ fontSize: '1.25rem', fontWeight: 600 }}>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: '50%',
+                background: 'rgba(99, 102, 241, 0.1)',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem',
+              }}
+            >
+              <Sparkles size={28} color="var(--accent-primary)" />
+            </div>
+            <p style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f8fafc' }}>
               {statusMessage || 'Connecting to stranger...'}
+            </p>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+              Direct browser-to-browser WebRTC handshake in progress
             </p>
           </div>
         )}
 
-        {/* Floating Local Mirror */}
-        <video
-          ref={localVideoRef}
-          autoPlay
-          playsInline
-          muted
-          className="local-video-preview"
-          style={{ opacity: isVideoDisabled ? 0 : 1 }}
-        />
+        {/* Floating Local Picture-in-Picture Card */}
+        <div className="local-video-card" style={{ opacity: isVideoDisabled ? 0.6 : 1 }}>
+          <video ref={localVideoRef} autoPlay playsInline muted className="local-video-preview" />
+          <div className="local-video-tag">
+            <span className="live-dot" style={{ width: 6, height: 6 }} />
+            <span>You</span>
+            {isAudioMuted && <MicOff size={11} color="var(--accent-danger)" />}
+            {isVideoDisabled && <VideoOff size={11} color="var(--accent-danger)" />}
+          </div>
+        </div>
 
-        {/* Floating Call Controls Overlay */}
+        {/* Floating In-Call Controls Dock */}
         <div className="call-controls-overlay">
           <button
-            className={`btn btn-icon ${isAudioMuted ? 'btn-danger' : 'btn-secondary'}`}
+            type="button"
+            className={`dock-btn ${isAudioMuted ? 'dock-btn-danger' : ''}`}
             onClick={onToggleAudio}
-            title={isAudioMuted ? 'Unmute' : 'Mute'}
+            title={isAudioMuted ? 'Unmute Mic' : 'Mute Mic'}
           >
-            {isAudioMuted ? <MicOff size={20} /> : <Mic size={20} />}
+            {isAudioMuted ? <MicOff size={19} /> : <Mic size={19} />}
           </button>
 
           <button
-            className={`btn btn-icon ${isVideoDisabled ? 'btn-danger' : 'btn-secondary'}`}
+            type="button"
+            className={`dock-btn ${isVideoDisabled ? 'dock-btn-danger' : ''}`}
             onClick={onToggleVideo}
             title={isVideoDisabled ? 'Enable Video' : 'Disable Video'}
           >
-            {isVideoDisabled ? <VideoOff size={20} /> : <Video size={20} />}
-          </button>
-
-          <button className="btn btn-primary" onClick={onNextStranger} title="Next Stranger (Esc)">
-            <SkipForward size={20} />
-            Next
-          </button>
-
-          <button className="btn btn-danger btn-icon" onClick={onLeaveCall} title="Leave Call">
-            <PhoneOff size={20} />
+            {isVideoDisabled ? <VideoOff size={19} /> : <Video size={19} />}
           </button>
 
           <button
-            className="btn btn-secondary btn-icon"
-            onClick={() => setIsChatOpen(!isChatOpen)}
-            title="Toggle Chat"
+            type="button"
+            className="dock-btn-next"
+            onClick={onNextStranger}
+            title="Next Stranger [Esc key]"
           >
-            <MessageSquare size={20} />
+            <SkipForward size={18} />
+            <span>Next</span>
           </button>
 
-          <button className="btn btn-secondary btn-icon" onClick={onOpenReport} title="Report User">
-            <ShieldAlert size={20} color="var(--accent-danger)" />
+          <button
+            type="button"
+            className="dock-btn-leave"
+            onClick={onLeaveCall}
+            title="Leave Call and return to Lobby"
+          >
+            <PhoneOff size={19} />
+          </button>
+
+          <button
+            type="button"
+            className="dock-btn"
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            title={isChatOpen ? 'Hide Chat' : 'Show Chat'}
+            style={{ position: 'relative' }}
+          >
+            <MessageSquare size={19} />
+            {messages.length > 0 && !isChatOpen && (
+              <span
+                style={{
+                  position: 'absolute',
+                  top: 4,
+                  right: 4,
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: 'var(--accent-primary)',
+                }}
+              />
+            )}
+          </button>
+
+          <button
+            type="button"
+            className="dock-btn"
+            onClick={onOpenReport}
+            title="Report inappropriate behavior"
+          >
+            <ShieldAlert size={19} color="var(--accent-danger)" />
           </button>
         </div>
       </div>
 
-      {/* RTCDataChannel Live Chat Panel */}
+      {/* Glassmorphic Live Chat Sidebar */}
       {isChatOpen && (
         <div className="chat-panel">
           <div className="chat-header">
-            <span>Direct P2P Chat</span>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 400 }}>
-              End-to-end encrypted
-            </span>
+            <div className="chat-header-left">
+              <MessageSquare size={18} color="var(--accent-primary)" />
+              <span>Direct Chat</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <span className="chat-header-badge">
+                <Lock size={11} />
+                P2P Encrypted
+              </span>
+              <button
+                type="button"
+                className="emoji-picker-close-btn"
+                onClick={() => setIsChatOpen(false)}
+                title="Minimize chat"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           <div className="chat-messages">
@@ -193,10 +300,30 @@ export const InCallView: FC<InCallViewProps> = ({
                   textAlign: 'center',
                   color: 'var(--text-muted)',
                   margin: 'auto',
-                  fontSize: '0.9rem',
+                  padding: '1.5rem',
                 }}
               >
-                Say hello! Messages travel directly between browsers via RTCDataChannel.
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '50%',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 0.75rem',
+                  }}
+                >
+                  <MessageSquare size={20} color="var(--text-secondary)" />
+                </div>
+                <p style={{ fontWeight: 600, color: '#f1f5f9', fontSize: '0.95rem' }}>
+                  No messages yet
+                </p>
+                <p style={{ fontSize: '0.82rem', marginTop: '0.35rem', lineHeight: 1.4 }}>
+                  Say hello! Messages travel strictly peer-to-peer over RTCDataChannel. Zero server
+                  logging.
+                </p>
               </div>
             ) : (
               messages.map((m) => (
@@ -204,22 +331,48 @@ export const InCallView: FC<InCallViewProps> = ({
                   key={m.id}
                   className={`chat-bubble ${m.isSelf ? 'chat-bubble-self' : 'chat-bubble-peer'}`}
                 >
-                  {m.content}
+                  <div>{m.content}</div>
+                  <span className="chat-bubble-time">
+                    {new Date(m.timestamp).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
                 </div>
               ))
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Emoji Picker Overlay */}
+          {/* Dismissible Emoji Picker Popover */}
           {showEmojiPicker && (
-            <div className="emoji-picker-container">
-              {/* @ts-ignore custom element */}
-              <emoji-picker ref={setEmojiPickerRef} class="dark"></emoji-picker>
-            </div>
+            <>
+              <button
+                type="button"
+                className="emoji-backdrop"
+                onClick={() => setShowEmojiPicker(false)}
+                aria-label="Close emoji picker"
+                style={{ background: 'transparent', border: 'none', padding: 0 }}
+              />
+              <div className="emoji-picker-container">
+                <div className="emoji-picker-header">
+                  <span>Reactions & Emojis</span>
+                  <button
+                    type="button"
+                    className="emoji-picker-close-btn"
+                    onClick={() => setShowEmojiPicker(false)}
+                    title="Close [Esc]"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                {/* @ts-ignore custom element */}
+                <emoji-picker ref={setEmojiPickerRef} class="dark"></emoji-picker>
+              </div>
+            </>
           )}
 
-          {/* Quick Reaction Emoji Bar */}
+          {/* Quick Reaction Emoji Pill Bar (no scrollbar) */}
           <div className="quick-emoji-bar">
             {QUICK_EMOJIS.map((emoji) => (
               <button
@@ -239,21 +392,33 @@ export const InCallView: FC<InCallViewProps> = ({
           <form className="chat-input-area" onSubmit={handleSend}>
             <button
               type="button"
-              className="btn btn-secondary btn-icon"
+              className="dock-btn"
+              style={{ width: 38, height: 38, flexShrink: 0 }}
               onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              title="Add Emoji"
+              title={showEmojiPicker ? 'Close Emoji Picker' : 'Pick Emoji'}
             >
               <Smile size={18} />
             </button>
             <input
               type="text"
               className="chat-input"
-              placeholder="Type a message..."
+              placeholder="Type message..."
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
             />
-            <button type="submit" className="btn btn-primary btn-icon" title="Send message">
-              <Send size={18} />
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{
+                width: 38,
+                height: 38,
+                padding: 0,
+                borderRadius: '50%',
+                flexShrink: 0,
+              }}
+              title="Send message (Enter)"
+            >
+              <Send size={16} />
             </button>
           </form>
         </div>
