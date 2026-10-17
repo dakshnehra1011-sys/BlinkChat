@@ -1,0 +1,84 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  validate:
+    name: Lint, Typecheck, Test (>90% Coverage) & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Biome Linter Check
+        run: pnpm lint
+
+      - name: TypeScript Typecheck
+        run: pnpm typecheck
+
+      - name: Vitest Suite (>90% Coverage Enforcement)
+        run: pnpm test:coverage
+
+      - name: Build Web Application
+        run: pnpm --filter @blinkchat/web build
+
+      - name: Build Cloudflare Worker
+        run: pnpm --filter @blinkchat/worker build
+
+  deploy:
+    name: Deploy to Cloudflare Workers & Pages
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Deploy Cloudflare Worker & Durable Objects
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: 'apps/worker'
+          command: 'deploy'
+
+      - name: Build & Deploy Frontend to Cloudflare Pages
+        run: |
+          pnpm --filter @blinkchat/web build
+          pnpm --filter @blinkchat/web exec wrangler pages deploy dist --project-name=blinkchat-web --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VITE_API_URL: https://blinkchat-worker.blinkchat.workers.dev

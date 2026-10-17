@@ -1,0 +1,40 @@
+{
+  "name": "blinkchat-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --recursive run build",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "typecheck": "pnpm --recursive run typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "prettier --write .",
+    "changeset": "changeset",
+    "dev": "pnpm --parallel run dev",
+    "dev:worker": "pnpm --filter @blinkchat/worker dev",
+    "dev:web": "pnpm --filter @blinkchat/web dev",
+    "db:generate": "pnpm --filter @blinkchat/database db:generate",
+    "db:migrate": "pnpm --filter @blinkchat/database db:migrate",
+    "db:migrate:local": "pnpm --filter @blinkchat/worker exec wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "pnpm --filter @blinkchat/worker exec wrangler d1 migrations apply blinkchat_d1 --remote",
+    "deploy:worker": "pnpm --filter @blinkchat/worker exec wrangler deploy",
+    "deploy:web": "pnpm --filter @blinkchat/web exec wrangler pages deploy dist --project-name=blinkchat-web",
+    "deploy": "pnpm deploy:worker && pnpm deploy:web"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@changesets/cli": "^3.0.3",
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^22.13.10",
+    "@vitest/coverage-v8": "^3.2.7",
+    "lefthook": "^2.2.2",
+    "prettier": "^3.9.10",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  }
+}
