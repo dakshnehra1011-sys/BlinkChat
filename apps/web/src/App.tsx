@@ -15,6 +15,7 @@ export function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('blinkchat_token'));
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'home' | 'stage'>('stage');
   const queryClient = useQueryClient();
 
   // TanStack Query for authenticated user session
@@ -39,22 +40,6 @@ export function App() {
     enabled: !!token,
   });
 
-  const handleAuthSuccess = (
-    newToken: string,
-    newUser: { id: string; email: string; emailVerified: boolean }
-  ) => {
-    setToken(newToken);
-    localStorage.setItem('blinkchat_token', newToken);
-    queryClient.setQueryData(['currentUser', newToken], newUser);
-  };
-
-  const handleLogout = () => {
-    setToken(null);
-    localStorage.removeItem('blinkchat_token');
-    queryClient.setQueryData(['currentUser', null], null);
-    queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-  };
-
   const {
     callState,
     localStream,
@@ -69,10 +54,40 @@ export function App() {
     findStranger,
     nextStranger,
     leaveCall,
+    cancelQueue,
+    stopCamera,
     sendMessage,
     toggleAudio,
     toggleVideo,
   } = useWebRTC(token, user?.id || null);
+
+  const handleAuthSuccess = (
+    newToken: string,
+    newUser: { id: string; email: string; emailVerified: boolean }
+  ) => {
+    setToken(newToken);
+    localStorage.setItem('blinkchat_token', newToken);
+    queryClient.setQueryData(['currentUser', newToken], newUser);
+    setViewMode('stage');
+  };
+
+  const handleLogout = () => {
+    stopCamera();
+    setToken(null);
+    localStorage.removeItem('blinkchat_token');
+    queryClient.setQueryData(['currentUser', null], null);
+    queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+    setViewMode('home');
+  };
+
+  const handleNavigateHome = () => {
+    stopCamera();
+    setViewMode('home');
+  };
+
+  const handleNavigateStage = () => {
+    setViewMode('stage');
+  };
 
   const isInCall = callState === 'connecting' || callState === 'connected' || callState === 'ended';
 
@@ -81,13 +96,19 @@ export function App() {
       <Navbar
         user={user}
         isDirectConnection={isDirectConnection}
+        activeView={user ? viewMode : 'home'}
+        onNavigateHome={handleNavigateHome}
+        onNavigateStage={handleNavigateStage}
         onOpenAuth={() => setIsAuthOpen(true)}
         onLogout={handleLogout}
       />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        {!user ? (
-          <LandingView onStart={() => setIsAuthOpen(true)} />
+        {!user || viewMode === 'home' ? (
+          <LandingView
+            isLoggedIn={!!user}
+            onStart={() => (user ? handleNavigateStage() : setIsAuthOpen(true))}
+          />
         ) : isInCall ? (
           <InCallView
             callState={callState}
@@ -113,6 +134,8 @@ export function App() {
             statusMessage={statusMessage}
             onStartPreview={startPreview}
             onFindStranger={findStranger}
+            onCancelQueue={cancelQueue}
+            onBackHome={handleNavigateHome}
             onToggleAudio={toggleAudio}
             onToggleVideo={toggleVideo}
           />

@@ -214,6 +214,31 @@ export function useWebRTC(token: string | null, userId: string | null) {
     setStatusMessage('Ready to find a stranger');
   }, [cleanupCall]);
 
+  // Cancel matchmaking search
+  const cancelQueue = useCallback(() => {
+    if (matchWsRef.current) {
+      matchWsRef.current.close();
+      matchWsRef.current = null;
+    }
+    setCallState('preview');
+    setStatusMessage('Search cancelled. Camera ready.');
+  }, []);
+
+  // Stop camera and microphone tracks completely (e.g. returning to Home page)
+  const stopCamera = useCallback(() => {
+    if (localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+      setLocalStream(null);
+    }
+    cleanupCall();
+    if (matchWsRef.current) {
+      matchWsRef.current.close();
+      matchWsRef.current = null;
+    }
+    setCallState('idle');
+    setStatusMessage('');
+  }, [localStream, cleanupCall]);
+
   // Setup WebRTC peer connection
   const setupPeerConnection = useCallback(
     (
@@ -569,6 +594,8 @@ export function useWebRTC(token: string | null, userId: string | null) {
     findStranger,
     nextStranger,
     leaveCall,
+    cancelQueue,
+    stopCamera,
     sendMessage,
     toggleAudio,
     toggleVideo,

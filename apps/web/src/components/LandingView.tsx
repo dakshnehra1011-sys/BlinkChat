@@ -3,9 +3,10 @@ import type { FC } from 'react';
 
 interface LandingViewProps {
   onStart: () => void;
+  isLoggedIn?: boolean;
 }
 
-export const LandingView: FC<LandingViewProps> = ({ onStart }) => {
+export const LandingView: FC<LandingViewProps> = ({ onStart, isLoggedIn }) => {
   return (
     <div className="landing-hero">
       <h1 className="landing-title">Meet Strangers Instantly with Ultra-Low Latency Video</h1>
@@ -19,7 +20,7 @@ export const LandingView: FC<LandingViewProps> = ({ onStart }) => {
         style={{ padding: '0.9rem 2.2rem', fontSize: '1.1rem' }}
         onClick={onStart}
       >
-        Start Chatting Now
+        {isLoggedIn ? 'Enter Video Chat Stage' : 'Start Chatting Now'}
         <ArrowRight size={20} />
       </button>
 

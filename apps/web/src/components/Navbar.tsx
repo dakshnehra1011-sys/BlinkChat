@@ -1,20 +1,45 @@
-import { LogIn, LogOut, Radio, ShieldCheck, Zap } from 'lucide-react';
+import { Home, LogIn, LogOut, Radio, ShieldCheck, Video, Zap } from 'lucide-react';
 import type { FC } from 'react';
 
 interface NavbarProps {
   user: { email: string; emailVerified: boolean } | null;
   isDirectConnection: boolean | null;
+  activeView: 'home' | 'stage';
+  onNavigateHome: () => void;
+  onNavigateStage: () => void;
   onOpenAuth: () => void;
   onLogout: () => void;
 }
 
-export const Navbar: FC<NavbarProps> = ({ user, isDirectConnection, onOpenAuth, onLogout }) => {
+export const Navbar: FC<NavbarProps> = ({
+  user,
+  isDirectConnection,
+  activeView,
+  onNavigateHome,
+  onNavigateStage,
+  onOpenAuth,
+  onLogout,
+}) => {
   return (
     <nav className="navbar">
-      <div className="brand">
+      <button
+        type="button"
+        className="brand"
+        onClick={onNavigateHome}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          textAlign: 'left',
+          font: 'inherit',
+          color: 'inherit',
+        }}
+        title="Go to Home"
+      >
         <Zap className="brand-icon" size={28} />
         <span>BlinkChat</span>
-      </div>
+      </button>
 
       <div className="nav-actions">
         {isDirectConnection !== null && (
@@ -26,11 +51,30 @@ export const Navbar: FC<NavbarProps> = ({ user, isDirectConnection, onOpenAuth, 
 
         {user ? (
           <>
+            {activeView === 'stage' ? (
+              <button
+                className="btn btn-secondary"
+                onClick={onNavigateHome}
+                title="Back to Homepage"
+              >
+                <Home size={16} />
+                Home
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                onClick={onNavigateStage}
+                title="Start Video Chat"
+              >
+                <Video size={16} />
+                Start Chat
+              </button>
+            )}
             <span className="badge badge-success">
               <ShieldCheck size={14} />
               {user.email}
             </span>
-            <button className="btn btn-secondary" onClick={onLogout}>
+            <button className="btn btn-secondary" onClick={onLogout} title="Log Out">
               <LogOut size={16} />
               Log Out
             </button>

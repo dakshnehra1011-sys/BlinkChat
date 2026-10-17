@@ -1,4 +1,4 @@
-import { Loader2, Mic, MicOff, Search, Video, VideoOff } from 'lucide-react';
+import { ArrowLeft, Loader2, Mic, MicOff, Search, Video, VideoOff } from 'lucide-react';
 import type { FC } from 'react';
 import { useEffect, useRef } from 'react';
 import type { CallState } from '../hooks/useWebRTC.js';
@@ -11,6 +11,8 @@ interface PreviewStageProps {
   statusMessage: string;
   onStartPreview: () => void;
   onFindStranger: () => void;
+  onCancelQueue: () => void;
+  onBackHome: () => void;
   onToggleAudio: () => void;
   onToggleVideo: () => void;
 }
@@ -23,6 +25,8 @@ export const PreviewStage: FC<PreviewStageProps> = ({
   statusMessage,
   onStartPreview,
   onFindStranger,
+  onCancelQueue,
+  onBackHome,
   onToggleAudio,
   onToggleVideo,
 }) => {
@@ -51,6 +55,27 @@ export const PreviewStage: FC<PreviewStageProps> = ({
         padding: '2rem',
       }}
     >
+      {/* Back to Home Navigation Bar */}
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '640px',
+          marginBottom: '1rem',
+          display: 'flex',
+          justifyContent: 'flex-start',
+        }}
+      >
+        <button
+          className="btn btn-secondary"
+          onClick={onBackHome}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+          title="Back to Landing Page"
+        >
+          <ArrowLeft size={16} />
+          Back to Home
+        </button>
+      </div>
+
       <div
         style={{
           width: '100%',
@@ -139,14 +164,24 @@ export const PreviewStage: FC<PreviewStageProps> = ({
           </p>
 
           {callState === 'queued' ? (
-            <button
-              className="btn btn-primary"
-              style={{ width: '100%', padding: '0.9rem', fontSize: '1.05rem' }}
-              disabled
-            >
-              <Loader2 className="animate-spin" size={20} />
-              Looking for a stranger...
-            </button>
+            <div style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1, padding: '0.9rem', fontSize: '1.05rem' }}
+                disabled
+              >
+                <Loader2 className="animate-spin" size={20} />
+                Looking for a stranger...
+              </button>
+              <button
+                className="btn btn-danger"
+                style={{ padding: '0.9rem 1.5rem', fontWeight: 600 }}
+                onClick={onCancelQueue}
+                title="Cancel Search"
+              >
+                Cancel
+              </button>
+            </div>
           ) : (
             <button
               className="btn btn-primary"
