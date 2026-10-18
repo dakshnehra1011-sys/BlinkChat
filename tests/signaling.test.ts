@@ -306,4 +306,168 @@ describe('SignalingDO Two-Peer WebRTC Lifecycle', () => {
     listeners1.error?.forEach((fn) => fn());
     expect(signaling.peers.has('user-err')).toBe(false);
   });
+
+  it('rejects cross-session messages and preserves a replacement socket when an old one closes', () => {
+    const signaling = new SignalingDO({} as any, {} as any);
+    const listenersBySocket = new Map<any, Record<string, ((...args: any[]) => void)[]>>();
+    const createSocket = () => {
+      const listeners: Record<string, ((...args: any[]) => void)[]> = {};
+      const socket = {
+        readyState: 1,
+        send: vi.fn(),
+        close: vi.fn(),
+        accept: vi.fn(),
+        addEventListener: (event: string, fn: (...args: any[]) => void) => {
+          listeners[event] = listeners[event] || [];
+          listeners[event]!.push(fn);
+        },
+      } as any;
+      listenersBySocket.set(socket, listeners);
+      return socket;
+    };
+
+    const oldAliceSocket = createSocket();
+    const aliceSocket = createSocket();
+    const bobSocket = createSocket();
+    signaling.handleWebSocket(oldAliceSocket, 'alice-tab', 'session-1', 'alice');
+    signaling.handleWebSocket(aliceSocket, 'alice-tab', 'session-1', 'alice');
+    signaling.handleWebSocket(bobSocket, 'bob-tab', 'session-1', 'bob');
+
+    listenersBySocket.get(aliceSocket)?.message?.forEach((fn) =>
+      fn({
+        data: JSON.stringify({
+          type: 'signal.offer',
+          sessionId: 'different-session',
+          sdp: 'must-not-forward',
+        }),
+      })
+    );
+    expect(bobSocket.send).not.toHaveBeenCalled();
+    expect(aliceSocket.send).toHaveBeenCalledWith(expect.stringContaining('SESSION_MISMATCH'));
+
+    listenersBySocket.get(oldAliceSocket)?.close?.forEach((fn) => fn());
+    expect(signaling.peers.get('alice-tab')?.ws).toBe(aliceSocket);
+  });
+
+  it('rejects two clients from the same account in one session', async () => {
+    (globalThis as any).WebSocketPair = class {
+      0: any;
+      1: any;
+      constructor() {
+        this[0] = { accept: vi.fn(), send: vi.fn(), close: vi.fn(), addEventListener: vi.fn() };
+        this[1] = { accept: vi.fn(), send: vi.fn(), close: vi.fn(), addEventListener: vi.fn() };
+      }
+    };
+    const signaling = new SignalingDO({} as any, {} as any);
+    await signaling.fetch(
+      new Request(
+        'http://localhost/api/ws/session?userId=alice-tab-1&accountUserId=alice&sessionId=same-account',
+        {
+          headers: { Upgrade: 'websocket' },
+        }
+      )
+    );
+    const second = await signaling.fetch(
+      new Request(
+        'http://localhost/api/ws/session?userId=alice-tab-2&accountUserId=alice&sessionId=same-account',
+        {
+          headers: { Upgrade: 'websocket' },
+        }
+      )
+    );
+    expect(second.status).toBe(403);
+  });
+
+  it('buffers every signaling message type before the other peer joins and flushes them', async () => {
+    const signaling = new SignalingDO({} as any, {} as any);
+    const inbox: any[] = [];
+    const events: Record<string, ((event: any) => void)[]> = {};
+    const sender = {
+      readyState: 1,
+      send: vi.fn((data: string) => inbox.push(JSON.parse(data))),
+      close: vi.fn(),
+      accept: vi.fn(),
+      addEventListener: (name: string, fn: (event: any) => void) => {
+        events[name] = [...(events[name] ?? []), fn];
+      },
+    } as any;
+    signaling.handleWebSocket(sender, 'alice', 'session');
+    const send = (message: unknown) =>
+      events.message?.forEach((listener) => listener({ data: JSON.stringify(message) }));
+    send({ type: 'signal.offer', sessionId: 'session', sdp: 'offer' });
+    send({ type: 'signal.answer', sessionId: 'session', sdp: 'answer' });
+    send({ type: 'signal.ice', sessionId: 'session', candidate: { candidate: 'candidate' } });
+    send({ type: 'peer.state', sessionId: 'session', state: 'connected' });
+    send({ type: 'heartbeat' });
+    expect(signaling.pendingMessages).toHaveLength(4);
+    expect(inbox.some((message) => message.type === 'heartbeat_ack')).toBe(true);
+
+    const received: any[] = [];
+    const receiver = {
+      readyState: 1,
+      send: vi.fn((data: string) => received.push(JSON.parse(data))),
+      close: vi.fn(),
+      accept: vi.fn(),
+      addEventListener: vi.fn(),
+    } as any;
+    signaling.handleWebSocket(receiver, 'bob', 'session');
+    expect(received.map((message) => message.type)).toEqual([
+      'signal.offer',
+      'signal.answer',
+      'signal.ice',
+      'peer.state',
+    ]);
+    expect(signaling.pendingMessages).toHaveLength(0);
+  });
+
+  it('keeps buffered messages when delivery fails and ignores replaced sockets', () => {
+    const signaling = new SignalingDO({} as any, {} as any);
+    const listeners = new Map<any, Record<string, ((event: any) => void)[]>>();
+    const makeSocket = (send: (data: string) => void = () => {}) => {
+      const events: Record<string, ((event: any) => void)[]> = {};
+      const socket = {
+        readyState: 1,
+        send: vi.fn(send),
+        close: vi.fn(),
+        accept: vi.fn(),
+        addEventListener: (name: string, fn: (event: any) => void) => {
+          events[name] = [...(events[name] ?? []), fn];
+        },
+      } as any;
+      listeners.set(socket, events);
+      return socket;
+    };
+    const aliceOld = makeSocket();
+    const alice = makeSocket();
+    signaling.handleWebSocket(aliceOld, 'alice', 'session');
+    signaling.handleWebSocket(alice, 'alice', 'session');
+    const signal = { type: 'signal.offer', sessionId: 'session', sdp: 'offer' };
+    listeners
+      .get(aliceOld)
+      ?.message?.forEach((listener) => listener({ data: JSON.stringify(signal) }));
+    expect(signaling.pendingMessages).toHaveLength(0);
+    listeners
+      .get(alice)
+      ?.message?.forEach((listener) => listener({ data: JSON.stringify(signal) }));
+    expect(signaling.pendingMessages).toHaveLength(1);
+    listeners.get(alice)?.message?.forEach((listener) => listener({ data: '{bad json' }));
+
+    const failingBob = makeSocket(() => {
+      throw new Error('closed transport');
+    });
+    signaling.handleWebSocket(failingBob, 'bob', 'session');
+    expect(signaling.pendingMessages).toHaveLength(1);
+    expect(signaling.sendMessage({ readyState: 3 } as any, signal as any)).toBe(false);
+    expect(
+      signaling.sendMessage(
+        {
+          readyState: 1,
+          send: () => {
+            throw new Error('send failed');
+          },
+        } as any,
+        signal as any
+      )
+    ).toBe(false);
+  });
 });

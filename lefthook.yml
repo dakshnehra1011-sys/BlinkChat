@@ -3,13 +3,13 @@ pre-commit:
   commands:
     lint:
       glob: '*.{js,ts,jsx,tsx}'
-      run: pnpm biome check {staged_files}
+      run: bunx biome check {staged_files}
     typecheck:
-      run: pnpm typecheck
+      run: bun run typecheck
     test:
-      run: pnpm test
+      run: bun run test
 
 commit-msg:
   commands:
     commitlint:
-      run: pnpm commitlint --edit {1}
+      run: bunx commitlint --edit {1}

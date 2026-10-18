@@ -77,22 +77,6 @@ function createFallbackMediaStream(audioTrack?: MediaStreamTrack | null): MediaS
 
   if (audioTrack) {
     stream.addTrack(audioTrack);
-  } else {
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        const audioCtx = new AudioCtx();
-        const osc = audioCtx.createOscillator();
-        const dst = audioCtx.createMediaStreamDestination();
-        osc.connect(dst);
-        osc.start();
-        const silentTrack = dst.stream.getAudioTracks()[0];
-        if (silentTrack) {
-          silentTrack.enabled = false;
-          stream.addTrack(silentTrack);
-        }
-      }
-    } catch {}
   }
 
   return stream;
@@ -135,6 +119,8 @@ export function useWebRTC(token: string | null, userId: string | null) {
   const matchWsRef = useRef<WebSocket | null>(null);
   const signalingWsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const iceRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const iceRestartAttemptedRef = useRef(false);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const pendingIceCandidatesRef = useRef<IceCandidatePayload[]>([]);
@@ -201,17 +187,23 @@ export function useWebRTC(token: string | null, userId: string | null) {
   }, [callState]);
 
   // TanStack Query for ICE server configuration
-  const { data: iceConfig } = useQuery<{ iceServers: RTCIceServer[] }>({
-    queryKey: ['iceServers'],
+  const { data: iceConfig, refetch: refreshIceConfig } = useQuery<{
+    iceServers: RTCIceServer[];
+    turnAvailable?: boolean;
+  }>({
+    queryKey: ['iceServers', token],
     queryFn: async () => {
-      const res = await fetch(getApiUrl('/api/config/ice'));
+      const res = await fetch(getApiUrl('/api/config/ice'), {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!res.ok)
         return {
           iceServers: iceServersRef.current,
         };
       return res.json();
     },
-    staleTime: Infinity,
+    staleTime: 15 * 60 * 1000,
+    enabled: Boolean(token),
   });
 
   useEffect(() => {
@@ -222,6 +214,10 @@ export function useWebRTC(token: string | null, userId: string | null) {
 
   // Handle remote peer disconnection or departure
   const handleRemotePeerLeave = useCallback((reason: string) => {
+    if (iceRecoveryTimerRef.current) {
+      clearTimeout(iceRecoveryTimerRef.current);
+      iceRecoveryTimerRef.current = null;
+    }
     if (dataChannelRef.current) {
       try {
         dataChannelRef.current.close();
@@ -265,7 +261,14 @@ export function useWebRTC(token: string | null, userId: string | null) {
       localStreamRef.current = stream;
       setLocalStream(stream);
       setCallState('preview');
-      setStatusMessage('Camera and microphone ready');
+      const hasMicrophone = stream.getAudioTracks().some((track) => track.readyState === 'live');
+      setIsAudioMuted(!hasMicrophone);
+      setIsVideoDisabled(!stream.getVideoTracks().some((track) => track.readyState === 'live'));
+      setStatusMessage(
+        hasMicrophone
+          ? 'Camera and microphone ready'
+          : 'Camera ready; microphone unavailable. Check browser permissions.'
+      );
       return stream;
     } catch (err) {
       console.warn(
@@ -281,7 +284,14 @@ export function useWebRTC(token: string | null, userId: string | null) {
         localStreamRef.current = stream;
         setLocalStream(stream);
         setCallState('preview');
-        setStatusMessage('Camera and microphone ready');
+        const hasMicrophone = stream.getAudioTracks().some((track) => track.readyState === 'live');
+        setIsAudioMuted(!hasMicrophone);
+        setIsVideoDisabled(!stream.getVideoTracks().some((track) => track.readyState === 'live'));
+        setStatusMessage(
+          hasMicrophone
+            ? 'Camera and microphone ready'
+            : 'Camera ready; microphone unavailable. Check browser permissions.'
+        );
         return stream;
       } catch (relaxedErr) {
         console.warn('Physical camera unavailable, attempting mic + virtual fallback:', relaxedErr);
@@ -298,10 +308,12 @@ export function useWebRTC(token: string | null, userId: string | null) {
           localStreamRef.current = fallbackStream;
           setLocalStream(fallbackStream);
           setCallState('preview');
+          setIsAudioMuted(audioTrack?.readyState !== 'live');
+          setIsVideoDisabled(false);
           setStatusMessage(
             audioTrack
               ? 'Mic active (Virtual video - physical camera in use)'
-              : 'Virtual preview active (Camera in use)'
+              : 'Virtual video active; microphone unavailable. Check browser permissions.'
           );
           return fallbackStream;
         } catch (fallbackErr) {
@@ -315,6 +327,10 @@ export function useWebRTC(token: string | null, userId: string | null) {
 
   // Cleanup peer connection and signaling with graceful peer departure notifications
   const cleanupCall = useCallback(() => {
+    if (iceRecoveryTimerRef.current) {
+      clearTimeout(iceRecoveryTimerRef.current);
+      iceRecoveryTimerRef.current = null;
+    }
     outboundIceQueueRef.current = [];
     remoteStreamRef.current = new MediaStream();
 
@@ -402,31 +418,103 @@ export function useWebRTC(token: string | null, userId: string | null) {
       pcRef.current = pc;
       outboundIceQueueRef.current = [];
       remoteStreamRef.current = new MediaStream();
+      iceRestartAttemptedRef.current = false;
+      if (iceRecoveryTimerRef.current) {
+        clearTimeout(iceRecoveryTimerRef.current);
+        iceRecoveryTimerRef.current = null;
+      }
 
       // Add local tracks
       currentStream.getTracks().forEach((track) => {
         pc.addTrack(track, currentStream);
       });
+      // Keep an audio m-line in the offer even if this user has no microphone,
+      // so the other peer can still send audio in a one-sided-audio call.
+      if (!currentStream.getAudioTracks().some((track) => track.readyState === 'live')) {
+        pc.addTransceiver('audio', { direction: 'sendrecv' });
+      }
 
       const checkConnected = () => {
         if (
           pc.connectionState === 'connected' ||
           pc.iceConnectionState === 'connected' ||
-          pc.iceConnectionState === 'completed' ||
-          dataChannelRef.current?.readyState === 'open'
+          pc.iceConnectionState === 'completed'
         ) {
+          if (iceRecoveryTimerRef.current) {
+            clearTimeout(iceRecoveryTimerRef.current);
+            iceRecoveryTimerRef.current = null;
+          }
           setCallState('connected');
           setStatusMessage('Connected with stranger');
-          pc.getStats().then((stats) => {
-            stats.forEach((report) => {
-              if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                const localCandidate = stats.get(report.localCandidateId);
-                const isRelay = localCandidate?.candidateType === 'relay';
-                setIsDirectConnection(!isRelay);
-              }
-            });
-          }).catch(() => {});
+          pc.getStats()
+            .then((stats) => {
+              stats.forEach((report) => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                  const localCandidate = stats.get(report.localCandidateId);
+                  const isRelay = localCandidate?.candidateType === 'relay';
+                  setIsDirectConnection(!isRelay);
+                }
+              });
+            })
+            .catch(() => {});
         }
+      };
+
+      const recoverIceConnection = () => {
+        if (iceRecoveryTimerRef.current) return;
+        setStatusMessage('Connection interrupted; trying to reconnect...');
+        const shouldRestart = isInitiator && !iceRestartAttemptedRef.current;
+        iceRecoveryTimerRef.current = setTimeout(
+          async () => {
+            iceRecoveryTimerRef.current = null;
+            if (
+              pc.connectionState === 'connected' ||
+              pc.iceConnectionState === 'connected' ||
+              pc.iceConnectionState === 'completed'
+            ) {
+              return;
+            }
+
+            if (shouldRestart) {
+              iceRestartAttemptedRef.current = true;
+              const ws = signalingWsRef.current;
+              try {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                  throw new Error('Signaling socket is unavailable for ICE restart');
+                }
+                pc.restartIce();
+                const offer = await pc.createOffer({ iceRestart: true });
+                await pc.setLocalDescription(offer);
+                if (pc.localDescription?.sdp && ws.readyState === WebSocket.OPEN) {
+                  ws.send(
+                    JSON.stringify({
+                      type: 'signal.offer',
+                      sessionId: currentSessionId,
+                      sdp: pc.localDescription.sdp,
+                    })
+                  );
+                  setStatusMessage('Network changed; retrying the media connection...');
+                }
+              } catch (err) {
+                console.warn('[WebRTC] ICE restart failed:', err);
+              }
+              recoverIceConnection();
+              return;
+            }
+
+            iceRecoveryTimerRef.current = setTimeout(() => {
+              iceRecoveryTimerRef.current = null;
+              const isStillDisconnected =
+                pc.connectionState !== 'connected' &&
+                pc.iceConnectionState !== 'connected' &&
+                pc.iceConnectionState !== 'completed';
+              if (isStillDisconnected) {
+                handleRemotePeerLeave('Connection failed. Try the next stranger.');
+              }
+            }, 10000);
+          },
+          shouldRestart ? 1500 : 10000
+        );
       };
 
       // Handle remote tracks with guaranteed fresh MediaStream instance for React
@@ -457,6 +545,20 @@ export function useWebRTC(token: string | null, userId: string | null) {
           setStatusMessage('Connected with stranger');
           checkConnected();
         };
+        event.track.onmute = () => {
+          setRemoteStream(new MediaStream(remoteStreamRef.current.getTracks()));
+        };
+        event.track.onended = () => {
+          remoteStreamRef.current = new MediaStream(
+            remoteStreamRef.current.getTracks().filter((track) => track.id !== event.track.id)
+          );
+          setRemoteStream(new MediaStream(remoteStreamRef.current.getTracks()));
+        };
+        if (!event.track.muted) {
+          setRemoteStream(new MediaStream(remoteStreamRef.current.getTracks()));
+          setCallState('connected');
+          setStatusMessage('Connected with stranger');
+        }
       };
 
       // Trickle ICE candidates with outbound queue fallback
@@ -484,19 +586,19 @@ export function useWebRTC(token: string | null, userId: string | null) {
         }
       };
 
-      // Connection state changes: only teardown on terminal failed/closed
+      // Recover transient network changes before ending the session.
       pc.onconnectionstatechange = () => {
         checkConnected();
-        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-          handleRemotePeerLeave('Connection ended');
+        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          recoverIceConnection();
         }
       };
 
       // ICE connection state changes
       pc.oniceconnectionstatechange = () => {
         checkConnected();
-        if (pc.iceConnectionState === 'failed') {
-          handleRemotePeerLeave('Media connection failed');
+        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+          recoverIceConnection();
         }
       };
 
@@ -608,7 +710,11 @@ export function useWebRTC(token: string | null, userId: string | null) {
 
           // Retransmit offer after 1.5s if remoteDescription is not yet set (guarantees delivery across WAN)
           setTimeout(() => {
-            if (!pc.remoteDescription && sigWs.readyState === WebSocket.OPEN && pc.localDescription?.sdp) {
+            if (
+              !pc.remoteDescription &&
+              sigWs.readyState === WebSocket.OPEN &&
+              pc.localDescription?.sdp
+            ) {
               console.log('[WebRTC] Resending offer to guarantee signaling across WAN');
               sigWs.send(
                 JSON.stringify({
@@ -622,7 +728,14 @@ export function useWebRTC(token: string | null, userId: string | null) {
         }
       };
 
-      sigWs.onmessage = async (event) => {
+      let signalingMessageChain = Promise.resolve();
+      sigWs.onmessage = (event) => {
+        signalingMessageChain = signalingMessageChain
+          .then(() => processSignalingMessage(event))
+          .catch((err) => console.error('Error in signaling message handler:', err));
+      };
+
+      const processSignalingMessage = async (event: MessageEvent) => {
         try {
           const msg: ServerMessage = JSON.parse(event.data);
 
@@ -633,6 +746,12 @@ export function useWebRTC(token: string | null, userId: string | null) {
 
           switch (msg.type) {
             case 'signal.offer': {
+              // The matchmaker may retry an offer if signaling is slow. Reapplying the
+              // same offer after creating an answer can restart negotiation and produce
+              // duplicate answers that arrive while the initiator is already stable.
+              if (pc.remoteDescription?.type === 'offer' && pc.remoteDescription.sdp === msg.sdp) {
+                break;
+              }
               await pc.setRemoteDescription(
                 new RTCSessionDescription({ type: 'offer', sdp: msg.sdp })
               );
@@ -668,6 +787,10 @@ export function useWebRTC(token: string | null, userId: string | null) {
             }
 
             case 'signal.answer': {
+              // Ignore retries of an answer already applied to this peer connection.
+              if (pc.remoteDescription?.type === 'answer' && pc.remoteDescription.sdp === msg.sdp) {
+                break;
+              }
               await pc.setRemoteDescription(
                 new RTCSessionDescription({ type: 'answer', sdp: msg.sdp })
               );
@@ -723,6 +846,13 @@ export function useWebRTC(token: string | null, userId: string | null) {
   // Join matchmaking queue via MatchmakerDO
   const findStranger = useCallback(async () => {
     if (!token) return;
+
+    // Refresh short-lived TURN credentials before each match so peer creation
+    // cannot race the authenticated ICE configuration request.
+    const result = await refreshIceConfig();
+    if (result.data?.iceServers?.length) {
+      iceServersRef.current = result.data.iceServers;
+    }
 
     let stream = localStreamRef.current || localStream;
     const hasLiveVideo = stream?.getVideoTracks().some((t) => t.readyState === 'live');
@@ -793,7 +923,15 @@ export function useWebRTC(token: string | null, userId: string | null) {
         setCallState('preview');
       }
     };
-  }, [token, localStream, startPreview, cleanupCall, connectToSignaling]);
+  }, [
+    token,
+    localStream,
+    iceConfig,
+    refreshIceConfig,
+    startPreview,
+    cleanupCall,
+    connectToSignaling,
+  ]);
 
   // Next stranger (teardown current call, re-enter queue)
   const nextStranger = useCallback(() => {
@@ -840,10 +978,16 @@ export function useWebRTC(token: string | null, userId: string | null) {
   // Toggle audio track
   const toggleAudio = useCallback(() => {
     if (localStream) {
-      localStream.getAudioTracks().forEach((track) => {
-        track.enabled = !track.enabled;
-        setIsAudioMuted(!track.enabled);
+      const tracks = localStream.getAudioTracks().filter((track) => track.readyState === 'live');
+      if (tracks.length === 0) {
+        setIsAudioMuted(true);
+        return;
+      }
+      const shouldMute = tracks.some((track) => track.enabled);
+      tracks.forEach((track) => {
+        track.enabled = !shouldMute;
       });
+      setIsAudioMuted(shouldMute);
     }
   }, [localStream]);
 

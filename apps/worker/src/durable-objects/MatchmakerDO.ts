@@ -2,7 +2,9 @@ import { type ClientMessage, clientMessageSchema, type ServerMessage } from '@bl
 import type { Env } from '../types.js';
 
 interface QueuedUser {
+  // userId is the per-tab client ID; accountUserId prevents self-matches across tabs.
   userId: string;
+  accountUserId: string;
   ws: WebSocket;
   joinedAt: number;
 }
@@ -21,6 +23,7 @@ export class MatchmakerDO {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const userId = url.searchParams.get('userId');
+    const accountUserId = url.searchParams.get('accountUserId') || userId;
 
     if (!userId) {
       return new Response('Missing userId', { status: 400 });
@@ -33,7 +36,7 @@ export class MatchmakerDO {
     const pair = new WebSocketPair();
     const [clientWs, serverWs] = Object.values(pair);
 
-    this.handleWebSocket(serverWs!, userId);
+    this.handleWebSocket(serverWs!, userId, accountUserId || userId);
 
     try {
       return new Response(null, {
@@ -45,7 +48,7 @@ export class MatchmakerDO {
     }
   }
 
-  handleWebSocket(ws: WebSocket, userId: string): void {
+  handleWebSocket(ws: WebSocket, userId: string, accountUserId = userId): void {
     ws.accept();
 
     // Evict any existing socket for this user (prevent duplicate queue presence)
@@ -81,11 +84,13 @@ export class MatchmakerDO {
 
         switch (msg.type) {
           case 'queue.join': {
-            this.addToQueue(userId, ws);
+            if (this.userSocketMap.get(userId) !== ws) return;
+            this.addToQueue(userId, ws, accountUserId);
             this.tryMatch();
             break;
           }
           case 'queue.leave': {
+            if (this.userSocketMap.get(userId) !== ws) return;
             this.removeFromQueue(userId);
             this.sendMessage(ws, { type: 'queue.status', status: 'idle' });
             break;
@@ -102,20 +107,26 @@ export class MatchmakerDO {
     });
 
     ws.addEventListener('close', () => {
-      this.removeFromQueue(userId);
-      this.userSocketMap.delete(userId);
+      // A replaced socket may close after its replacement has already joined.
+      if (this.userSocketMap.get(userId) === ws) {
+        this.removeFromQueue(userId);
+        this.userSocketMap.delete(userId);
+      }
     });
 
     ws.addEventListener('error', () => {
-      this.removeFromQueue(userId);
-      this.userSocketMap.delete(userId);
+      if (this.userSocketMap.get(userId) === ws) {
+        this.removeFromQueue(userId);
+        this.userSocketMap.delete(userId);
+      }
     });
   }
 
-  addToQueue(userId: string, ws: WebSocket): void {
+  addToQueue(userId: string, ws: WebSocket, accountUserId = userId): void {
     this.removeFromQueue(userId);
     this.queue.push({
       userId,
+      accountUserId,
       ws,
       joinedAt: Date.now(),
     });
@@ -135,7 +146,9 @@ export class MatchmakerDO {
     // Purge disconnected sockets
     this.queue = this.queue.filter((item) => {
       try {
-        return item.ws.readyState === WebSocket.OPEN;
+        return (
+          item.ws.readyState === WebSocket.OPEN && this.userSocketMap.get(item.userId) === item.ws
+        );
       } catch {
         return false;
       }
@@ -145,7 +158,9 @@ export class MatchmakerDO {
       const peer1 = this.queue[0];
       if (!peer1) break;
 
-      const peer2Index = this.queue.findIndex((p, idx) => idx > 0 && p.userId !== peer1.userId);
+      const peer2Index = this.queue.findIndex(
+        (p, idx) => idx > 0 && p.accountUserId !== peer1.accountUserId
+      );
 
       // If no candidate with a different userId is found, we cannot form a match yet
       if (peer2Index === -1) {
@@ -160,7 +175,7 @@ export class MatchmakerDO {
       const sessionId = crypto.randomUUID();
 
       // Notify peer 1 (Initiator: creates offer)
-      this.sendMessage(peer1.ws, {
+      const peer1Sent = this.sendMessage(peer1.ws, {
         type: 'match.found',
         sessionId,
         peerId: peer2.userId,
@@ -168,22 +183,38 @@ export class MatchmakerDO {
       });
 
       // Notify peer 2 (Receiver: waits for offer)
-      this.sendMessage(peer2.ws, {
+      const peer2Sent = this.sendMessage(peer2.ws, {
         type: 'match.found',
         sessionId,
         peerId: peer1.userId,
         isInitiator: false,
       });
+
+      // Never strand a client in a session if either match notification failed.
+      if (!peer1Sent || !peer2Sent) {
+        if (!peer1Sent && this.userSocketMap.get(peer1.userId) === peer1.ws) {
+          this.userSocketMap.delete(peer1.userId);
+        } else if (peer1Sent && peer1.ws.readyState === WebSocket.OPEN) {
+          this.queue.unshift({ ...peer1, joinedAt: Date.now() });
+        }
+        if (!peer2Sent && this.userSocketMap.get(peer2.userId) === peer2.ws) {
+          this.userSocketMap.delete(peer2.userId);
+        } else if (peer2Sent && peer2.ws.readyState === WebSocket.OPEN) {
+          this.queue.unshift({ ...peer2, joinedAt: Date.now() });
+        }
+      }
     }
   }
 
-  sendMessage(ws: WebSocket, msg: ServerMessage): void {
+  sendMessage(ws: WebSocket, msg: ServerMessage): boolean {
     try {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(msg));
+        return true;
       }
     } catch (err) {
       console.error('Failed to send message:', err);
     }
+    return false;
   }
 }

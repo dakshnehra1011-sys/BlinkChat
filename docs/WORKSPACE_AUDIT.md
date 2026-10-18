@@ -4,7 +4,7 @@
 
 - **Operating System**: Windows 11 (win32, x64)
 - **Node.js**: `v24.21.0`
-- **Package Managers**: `pnpm v10.33.0`, `npm v11.19.0`
+- **Package Manager**: Bun `1.4.3` (migrated from pnpm; see `bun.lock`).
 - **Version Control**: Git `2.54.0.windows.1`
 - **Workspace Directory**: `C:\Users\Daksh Nehra\Desktop\WebPlateform`
 - **Current Git Status**: Clean workspace, ready for monorepo initialization

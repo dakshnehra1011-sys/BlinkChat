@@ -7,75 +7,61 @@ This guide covers production deployment on Cloudflare, database migrations, TURN
 ## 1. Cloudflare Infrastructure Prerequisites
 
 - Cloudflare Account with Workers Paid subscription (required for Durable Objects).
-- Node.js `>= 20.0.0` and `pnpm`.
-- Wrangler CLI authenticated (`npx wrangler login`).
+- Bun `1.4.3` (install with the official Bun installer).
+- GitHub Actions secrets for Cloudflare API access and a provisioned Cloudflare D1 database.
 
----
+For local browser tests, copy `apps/worker/.dev.vars.example` to
+`apps/worker/.dev.vars`, replace the signing secret with a random value of at least 32
+characters, then run `bun run db:migrate:local` and `bun run test:e2e`.
 
-## 2. D1 Database Setup & Migrations
+## 2. CI-Only Production Deployment
 
-1. Create the production D1 database:
-   ```bash
-   npx wrangler d1 create blinkchat_production_d1
-   ```
-2. Copy the resulting `database_id` into `apps/worker/wrangler.jsonc` under `d1_databases`.
-3. Apply migrations to the remote D1 instance:
-   ```bash
-   npx wrangler d1 migrations apply blinkchat_production_d1 --remote
-   ```
+Production deployments and remote D1 migrations run through `.github/workflows/ci.yml`
+after validation succeeds on a push to `main` or `master`. Pull requests validate but
+never deploy. CI applies pending D1 migrations, deploys the Worker and Durable Objects,
+then builds and deploys the React app to Cloudflare Pages.
 
----
+Configure these GitHub Actions values:
 
-## 3. Cloudflare Worker Deployment
+- Actions secret `CLOUDFLARE_API_TOKEN`: permissions to deploy Workers, Pages, and apply D1 migrations.
+- Actions variable `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account that owns the Worker and Pages project.
 
-1. Set secret environment variables in Cloudflare:
-   ```bash
-   cd apps/worker
-   npx wrangler secret put JWT_SECRET
-   # Enter a strong 64-character random string
-   ```
-2. Deploy the Worker and Durable Objects:
-   ```bash
-   npx wrangler deploy
-   ```
-   This deploys:
-   - Hono HTTP API routes (`/api/auth/*`, `/api/reports`, `/api/config/ice`)
-   - WebSocket entry points (`/api/ws/match`, `/api/ws/session`)
-   - `MatchmakerDO` and `SignalingDO` Durable Object instances
+Before the first deployment, set `JWT_SIGNING_SECRET` as a Cloudflare Worker secret and
+keep the same strong random value across releases so active sessions remain valid. Set
+`RESEND_API_KEY` and `EMAIL_FROM` in the Worker environment for production verification
+email delivery. Never put Worker secrets in the browser bundle.
 
----
+The Pages build uses `VITE_API_URL=https://blinkchat-worker.blinkchat.workers.dev`.
+Configure the Pages project and Worker route to match these production domains.
 
-## 4. Frontend Deployment (Cloudflare Pages)
-
-1. Build the production web bundle:
-   ```bash
-   pnpm --filter @blinkchat/web build
-   ```
-   Output directory: `apps/web/dist`
-2. Deploy via Wrangler Pages:
-   ```bash
-   npx wrangler pages deploy apps/web/dist --project-name blinkchat-web
-   ```
-3. In the Cloudflare Pages dashboard:
-   - Configure proxy routes or custom domains so that `/api/*` proxies to the Worker domain.
+Do not deploy from a workstation with Wrangler. Push a commit to the production branch
+so the validated workflow applies migrations and publishes both services.
 
 ---
 
 ## 5. TURN Relay Provisioning & NAT Traversal
 
-By default, BlinkChat uses public Google STUN servers for direct host-to-host and reflexive peer connections (ICE UDP hole punching). Direct connections incur **zero server bandwidth cost**.
+Public STUN servers can discover direct paths, but they do not relay traffic. A TURN
+relay is required for many mobile, symmetric NAT, VPN, and corporate firewall networks.
+When there is no configured TURN relay, audio, video, and the peer-to-peer chat channel
+can all fail together because they use the same WebRTC connection.
 
 However, when users sit behind symmetric NATs or restrictive enterprise firewalls, direct P2P connections cannot be established. For these cases:
 
-1. Provision a TURN relay service (e.g. Twilio Network Traversal, Cloudflare Calls, or self-hosted Coturn).
-2. Set environment variables on the Worker:
+1. Provision a TURN relay service (for example Metered, Twilio Network Traversal, or
+   self-hosted Coturn). Cloudflare Workers and Pages do not provide a general purpose
+   TURN relay; they only serve the app and signaling in this deployment.
+2. Configure one of these options on the Worker. Static TURN credentials can be set as:
    ```bash
    npx wrangler secret put TURN_URLS
    npx wrangler secret put TURN_USERNAME
    npx wrangler secret put TURN_CREDENTIAL
    ```
-3. The Worker automatically dispenses these credentials through `/api/config/ice`.
-4. In frontend client code, `RTCPeerConnection.getStats()` monitors whether the selected candidate is `direct` (host/srflx) or `relayed`.
+   For Metered, set `METERED_DOMAIN` and `METERED_API_KEY` as Worker bindings/secrets
+   instead; the API key must never be placed in the frontend. Static TURN credentials
+   should be short lived where the provider supports them. Verify `/api/config/ice`
+   returns `turnAvailable: true` and at least one `turn:` or `turns:` URL after deploy.
+3. `RTCPeerConnection.getStats()` reports whether the selected path is direct or relayed.
 
 ---
 

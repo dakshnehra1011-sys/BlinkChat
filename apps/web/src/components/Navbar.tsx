@@ -45,7 +45,9 @@ export const Navbar: FC<NavbarProps> = ({
 
       <div className="nav-actions">
         {isDirectConnection !== null && (
-          <span className={`badge ${isDirectConnection ? 'badge-success' : 'badge-warning'}`}>
+          <span
+            className={`badge nav-connection-badge ${isDirectConnection ? 'badge-success' : 'badge-warning'}`}
+          >
             <Radio size={12} />
             {isDirectConnection ? 'P2P Direct' : 'TURN Relay'}
           </span>
@@ -57,34 +59,46 @@ export const Navbar: FC<NavbarProps> = ({
               <button
                 className="btn btn-secondary"
                 onClick={onNavigateHome}
+                aria-label="Go to home"
                 title="Back to Homepage"
               >
                 <Home size={16} />
-                Home
+                <span>Home</span>
               </button>
             ) : (
               <button
                 className="btn btn-primary"
                 onClick={onNavigateStage}
+                aria-label="Start video chat"
                 title="Start Video Chat"
               >
                 <Video size={16} />
-                Start Chat
+                <span>Start Chat</span>
               </button>
             )}
-            <span className="badge badge-success">
+            <span className="badge badge-success nav-user-badge" title={user.email}>
               <ShieldCheck size={14} />
-              {user.email}
+              <span className="nav-user-email">{user.email}</span>
             </span>
-            <button className="btn btn-secondary" onClick={onLogout} title="Log Out">
+            <button
+              className="btn btn-secondary"
+              onClick={onLogout}
+              aria-label="Log out"
+              title="Log Out"
+            >
               <LogOut size={16} />
-              Log Out
+              <span>Log Out</span>
             </button>
           </>
         ) : (
-          <button className="btn btn-primary" onClick={onOpenAuth}>
+          <button
+            className="btn btn-primary"
+            onClick={onOpenAuth}
+            aria-label="Sign in or register"
+            title="Sign In / Register"
+          >
             <LogIn size={16} />
-            Sign In / Register
+            <span>Sign In / Register</span>
           </button>
         )}
       </div>

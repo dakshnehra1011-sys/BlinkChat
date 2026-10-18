@@ -26,6 +26,7 @@ describe('MatchmakerDO Queue Logic', () => {
     } as any;
 
     // 1. Peer 1 joins
+    matchmaker.userSocketMap.set('user-1', ws1);
     matchmaker.addToQueue('user-1', ws1);
     expect(matchmaker.queue.length).toBe(1);
     expect(messagesPeer1[0]?.type).toBe('queue.status');
@@ -40,6 +41,7 @@ describe('MatchmakerDO Queue Logic', () => {
     expect(matchmaker.queue.length).toBe(1);
 
     // 4. Peer 2 joins
+    matchmaker.userSocketMap.set('user-2', ws2);
     matchmaker.addToQueue('user-2', ws2);
     expect(matchmaker.queue.length).toBe(2);
 
@@ -110,44 +112,146 @@ describe('MatchmakerDO Queue Logic', () => {
     matchmaker.addToQueue('user-alice', ws1);
     expect(matchmaker.queue.length).toBe(1);
 
+    const listeners2: Record<string, ((...args: any[]) => void)[]> = {};
     const ws2 = {
       readyState: 1,
       send: vi.fn(),
       close: vi.fn(),
       accept: vi.fn(),
-      addEventListener: vi.fn(),
+      addEventListener: (event: string, fn: (...args: any[]) => void) => {
+        listeners2[event] = listeners2[event] || [];
+        listeners2[event]!.push(fn);
+      },
     } as any;
 
     matchmaker.handleWebSocket(ws2, 'user-alice');
     expect(ws1.close).toHaveBeenCalledWith(1000, 'Duplicate connection replaced');
 
-    // Test socket close event cleans up queue and map
+    // A stale socket closing must not remove its replacement.
     listeners1.close?.forEach((fn) => fn());
+    expect(matchmaker.userSocketMap.get('user-alice')).toBe(ws2);
+    listeners2.close?.forEach((fn) => fn());
     expect(matchmaker.userSocketMap.has('user-alice')).toBe(false);
 
     // Test socket error event cleans up queue and map
-    matchmaker.handleWebSocket(ws1, 'user-carol');
+    const listeners3: Record<string, ((...args: any[]) => void)[]> = {};
+    const ws3 = {
+      readyState: 1,
+      send: vi.fn(),
+      close: vi.fn(),
+      accept: vi.fn(),
+      addEventListener: (event: string, fn: (...args: any[]) => void) => {
+        listeners3[event] = listeners3[event] || [];
+        listeners3[event]!.push(fn);
+      },
+    } as any;
+    matchmaker.handleWebSocket(ws3, 'user-carol');
     expect(matchmaker.userSocketMap.has('user-carol')).toBe(true);
-    listeners1.error?.forEach((fn) => fn());
+    listeners3.error?.forEach((fn) => fn());
     expect(matchmaker.userSocketMap.has('user-carol')).toBe(false);
   });
 
-  it('handles self-match branch and purges closed sockets in tryMatch', () => {
+  it('does not self-match separate tabs and purges closed or replaced sockets', () => {
     const matchmaker = new MatchmakerDO({} as any, {} as any);
-    const wsOpen = { readyState: 1, send: vi.fn(), close: vi.fn() } as any;
-    const wsClosed = { readyState: 3, send: vi.fn(), close: vi.fn() } as any;
+    const createSocket = () =>
+      ({
+        readyState: 1,
+        send: vi.fn(),
+        close: vi.fn(),
+        accept: vi.fn(),
+        addEventListener: vi.fn(),
+      }) as any;
+    const tabOne = createSocket();
+    const tabTwo = createSocket();
+    const otherAccount = createSocket();
+    const deadSocket = createSocket();
+    deadSocket.readyState = 3;
+    matchmaker.userSocketMap.set('alice-tab-one', tabOne);
+    matchmaker.userSocketMap.set('alice-tab-two', tabTwo);
+    matchmaker.userSocketMap.set('bob-tab-one', otherAccount);
+    matchmaker.userSocketMap.set('dead', deadSocket);
+    matchmaker.addToQueue('alice-tab-one', tabOne, 'alice');
+    matchmaker.addToQueue('alice-tab-two', tabTwo, 'alice');
+    matchmaker.addToQueue('bob-tab-one', otherAccount, 'bob');
+    matchmaker.addToQueue('dead', deadSocket, 'dead');
+    matchmaker.tryMatch();
 
-    // Purge closed sockets
-    matchmaker.queue = [
-      { userId: 'dead-1', ws: wsClosed, joinedAt: 1 },
-      { userId: 'user-1', ws: wsOpen, joinedAt: 2 },
-      { userId: 'user-1', ws: wsOpen, joinedAt: 3 }, // duplicate userId to hit self-match branch
-      { userId: 'user-2', ws: wsOpen, joinedAt: 4 },
-    ];
+    expect(deadSocket.send).not.toHaveBeenCalled();
+    const matchOne = JSON.parse(tabOne.send.mock.calls[1]![0]);
+    const matchBob = JSON.parse(otherAccount.send.mock.calls[1]![0]);
+    expect(matchOne.type).toBe('match.found');
+    expect(matchBob.type).toBe('match.found');
+    expect(matchOne.peerId).toBe('bob-tab-one');
+    expect(matchTwoIsQueued()).toBe(true);
+
+    function matchTwoIsQueued() {
+      return matchmaker.queue.some((entry) => entry.userId === 'alice-tab-two');
+    }
+  });
+
+  it('does not let an old socket close remove its replacement from the queue', () => {
+    const matchmaker = new MatchmakerDO({} as any, {} as any);
+    const listeners = new Map<any, Record<string, ((...args: any[]) => void)[]>>();
+    const createSocket = () => {
+      const socketListeners: Record<string, ((...args: any[]) => void)[]> = {};
+      const socket = {
+        readyState: 1,
+        send: vi.fn(),
+        close: vi.fn(),
+        accept: vi.fn(),
+        addEventListener: (event: string, fn: (...args: any[]) => void) => {
+          socketListeners[event] = socketListeners[event] || [];
+          socketListeners[event]!.push(fn);
+        },
+      } as any;
+      listeners.set(socket, socketListeners);
+      return socket;
+    };
+    const oldSocket = createSocket();
+    const replacement = createSocket();
+    matchmaker.handleWebSocket(oldSocket, 'client-1', 'account-1');
+    matchmaker.addToQueue('client-1', oldSocket, 'account-1');
+    matchmaker.handleWebSocket(replacement, 'client-1', 'account-1');
+    matchmaker.addToQueue('client-1', replacement, 'account-1');
+
+    listeners.get(oldSocket)?.close?.forEach((fn) => fn());
+
+    expect(matchmaker.userSocketMap.get('client-1')).toBe(replacement);
+    expect(matchmaker.queue).toHaveLength(1);
+    expect(matchmaker.queue[0]?.ws).toBe(replacement);
+  });
+
+  it('pairs several distinct users into isolated sessions in one queue pass', () => {
+    const matchmaker = new MatchmakerDO({} as any, {} as any);
+    const peers = Array.from({ length: 6 }, (_, index) => {
+      const inbox: any[] = [];
+      const ws = {
+        readyState: 1,
+        send: vi.fn((data: string) => inbox.push(JSON.parse(data))),
+        close: vi.fn(),
+      } as any;
+      const userId = `client-${index}`;
+      const accountUserId = `account-${index}`;
+      matchmaker.userSocketMap.set(userId, ws);
+      matchmaker.addToQueue(userId, ws, accountUserId);
+      return { userId, inbox };
+    });
 
     matchmaker.tryMatch();
-    // Dead was purged, self-match user-1/user-1 was unshifted and user-1 paired with user-2
-    expect(wsOpen.send).toHaveBeenCalled();
+
+    expect(matchmaker.queue).toHaveLength(0);
+    const matches = peers.map(({ inbox }) =>
+      inbox.find((message) => message.type === 'match.found')
+    );
+    expect(matches.every(Boolean)).toBe(true);
+    const sessions = new Set(matches.map((message) => message.sessionId));
+    expect(sessions).toHaveLength(3);
+    for (const match of matches) {
+      const reciprocal = matches.find(
+        (candidate) => candidate.peerId === peers[matches.indexOf(match)]?.userId
+      );
+      expect(reciprocal?.sessionId).toBe(match.sessionId);
+    }
   });
 
   it('handles fetch() request validation and upgrades', async () => {
@@ -180,5 +284,119 @@ describe('MatchmakerDO Queue Logic', () => {
       })
     );
     expect([101, 200]).toContain(resOk.status);
+  });
+
+  it('ignores stale queue commands, acknowledges leave and heartbeat, and handles malformed frames', async () => {
+    const matchmaker = new MatchmakerDO({} as any, {} as any);
+    const listeners = new Map<any, Record<string, ((event?: any) => void)[]>>();
+    const createSocket = () => {
+      const events: Record<string, ((event?: any) => void)[]> = {};
+      const socket = {
+        readyState: 1,
+        send: vi.fn(),
+        close: vi.fn(),
+        accept: vi.fn(),
+        addEventListener: (event: string, fn: (event?: any) => void) => {
+          events[event] = [...(events[event] ?? []), fn];
+        },
+      };
+      listeners.set(socket, events);
+      return socket as any;
+    };
+    const oldSocket = createSocket();
+    const currentSocket = createSocket();
+    matchmaker.handleWebSocket(oldSocket, 'same-client');
+    matchmaker.handleWebSocket(currentSocket, 'same-client');
+
+    const trigger = (socket: any, data: string | ArrayBuffer) =>
+      listeners.get(socket)?.message?.forEach((listener) => listener({ data }));
+    trigger(oldSocket, JSON.stringify({ type: 'queue.join' }));
+    expect(matchmaker.queue).toHaveLength(0);
+    trigger(currentSocket, JSON.stringify({ type: 'queue.join' }));
+    trigger(
+      currentSocket,
+      new TextEncoder().encode(JSON.stringify({ type: 'queue.leave' })).buffer
+    );
+    expect(matchmaker.queue).toHaveLength(0);
+    expect(currentSocket.send).toHaveBeenCalledWith(expect.stringContaining('"status":"idle"'));
+    trigger(currentSocket, JSON.stringify({ type: 'heartbeat' }));
+    expect(currentSocket.send).toHaveBeenCalledWith(expect.stringContaining('heartbeat_ack'));
+    trigger(currentSocket, '{not-json');
+    trigger(currentSocket, JSON.stringify({ type: 'not-a-protocol-message' }));
+    expect(currentSocket.send).toHaveBeenCalledWith(expect.stringContaining('INVALID_PAYLOAD'));
+  });
+
+  it('recovers queue entries when match notifications fail and filters disconnected peers', () => {
+    const matchmaker = new MatchmakerDO({} as any, {} as any);
+    const createSocket = (send = vi.fn()) => ({ readyState: 1, send, close: vi.fn() }) as any;
+    const aSend = vi.fn(() => {
+      throw new Error('socket send failed');
+    });
+    const a = createSocket(aSend);
+    const b = createSocket();
+    matchmaker.userSocketMap.set('a', a);
+    matchmaker.userSocketMap.set('b', b);
+    matchmaker.addToQueue('a', a);
+    matchmaker.addToQueue('b', b);
+    matchmaker.tryMatch();
+    expect(matchmaker.userSocketMap.has('a')).toBe(false);
+    expect(matchmaker.queue.map((entry) => entry.userId)).toEqual(['b']);
+    matchmaker.removeFromQueue('b');
+
+    const c = createSocket();
+    const d = createSocket(
+      vi.fn(() => {
+        throw new Error('peer send failed');
+      })
+    );
+    matchmaker.userSocketMap.set('c', c);
+    matchmaker.userSocketMap.set('d', d);
+    matchmaker.userSocketMap.set('c', c);
+    matchmaker.userSocketMap.set('d', d);
+    matchmaker.addToQueue('c', c);
+    matchmaker.addToQueue('d', d);
+    matchmaker.tryMatch();
+    expect(matchmaker.userSocketMap.has('d')).toBe(false);
+    expect(matchmaker.queue.map((entry) => entry.userId)).toEqual(['c']);
+
+    const closed = createSocket();
+    closed.readyState = 3;
+    const replaced = createSocket();
+    matchmaker.userSocketMap.set('closed', replaced);
+    matchmaker.addToQueue('closed', closed);
+    matchmaker.tryMatch();
+    expect(matchmaker.queue.every((entry) => entry.ws.readyState === 1)).toBe(true);
+  });
+
+  it('keeps same-account tabs queued and drops sockets whose readiness check throws', () => {
+    const matchmaker = new MatchmakerDO({} as any, {} as any);
+    const first = {
+      readyState: 1,
+      send: vi.fn(),
+      close: vi.fn(),
+    } as any;
+    const second = {
+      readyState: 1,
+      send: vi.fn(),
+      close: vi.fn(),
+    } as any;
+    const broken = {
+      get readyState(): never {
+        throw new Error('socket state is unavailable');
+      },
+      send: vi.fn(),
+      close: vi.fn(),
+    } as any;
+    matchmaker.userSocketMap.set('tab-a', first);
+    matchmaker.userSocketMap.set('tab-b', second);
+    matchmaker.userSocketMap.set('broken', broken);
+    matchmaker.addToQueue('tab-a', first, 'same-account');
+    matchmaker.addToQueue('tab-b', second, 'same-account');
+    matchmaker.addToQueue('broken', broken, 'another-account');
+
+    matchmaker.tryMatch();
+
+    expect(matchmaker.queue.map((entry) => entry.userId)).toEqual(['tab-a', 'tab-b']);
+    expect(first.send).not.toHaveBeenCalledWith(expect.stringContaining('match.found'));
   });
 });
