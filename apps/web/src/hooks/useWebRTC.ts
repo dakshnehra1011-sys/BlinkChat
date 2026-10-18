@@ -116,6 +116,9 @@ export function useWebRTC(token: string | null, userId: string | null) {
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const pendingIceCandidatesRef = useRef<IceCandidatePayload[]>([]);
+  const outboundIceQueueRef = useRef<ClientMessage[]>([]);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream>(new MediaStream());
   const iceServersRef = useRef<RTCIceServer[]>([
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
@@ -150,6 +153,10 @@ export function useWebRTC(token: string | null, userId: string | null) {
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
+
+  useEffect(() => {
+    localStreamRef.current = localStream;
+  }, [localStream]);
 
   // Proactive heartbeat keepalive while queued
   useEffect(() => {
@@ -215,45 +222,65 @@ export function useWebRTC(token: string | null, userId: string | null) {
 
   // Initialize local camera and microphone preview (with automatic fallback if hardware is busy)
   const startPreview = useCallback(async () => {
+    // 1. Try standard ideal HD camera constraints
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-        audio: { echoCancellation: true, noiseSuppression: true },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
+      localStreamRef.current = stream;
       setLocalStream(stream);
       setCallState('preview');
       setStatusMessage('Camera and microphone ready');
       return stream;
     } catch (err) {
-      console.warn('Physical camera/mic error, attempting fallback:', err);
-      let audioTrack: MediaStreamTrack | null = null;
+      console.warn('Ideal camera constraints failed, attempting basic { video: true, audio: true }:', err);
+      // 2. Try relaxed constraints for budget webcams and mobile devices
       try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
         });
-        audioTrack = audioStream.getAudioTracks()[0] || null;
-      } catch {}
-
-      try {
-        const fallbackStream = createFallbackMediaStream(audioTrack);
-        setLocalStream(fallbackStream);
+        localStreamRef.current = stream;
+        setLocalStream(stream);
         setCallState('preview');
-        setStatusMessage(
-          audioTrack
-            ? 'Mic active (Virtual video - physical camera in use)'
-            : 'Virtual preview active (Camera in use)'
-        );
-        return fallbackStream;
-      } catch (fallbackErr) {
-        console.error('Failed to create virtual fallback stream:', fallbackErr);
-        setStatusMessage('Camera or microphone access denied');
-        return null;
+        setStatusMessage('Camera and microphone ready');
+        return stream;
+      } catch (relaxedErr) {
+        console.warn('Physical camera unavailable, attempting mic + virtual fallback:', relaxedErr);
+        let audioTrack: MediaStreamTrack | null = null;
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true },
+          });
+          audioTrack = audioStream.getAudioTracks()[0] || null;
+        } catch {}
+
+        try {
+          const fallbackStream = createFallbackMediaStream(audioTrack);
+          localStreamRef.current = fallbackStream;
+          setLocalStream(fallbackStream);
+          setCallState('preview');
+          setStatusMessage(
+            audioTrack
+              ? 'Mic active (Virtual video - physical camera in use)'
+              : 'Virtual preview active (Camera in use)'
+          );
+          return fallbackStream;
+        } catch (fallbackErr) {
+          console.error('Failed to create virtual fallback stream:', fallbackErr);
+          setStatusMessage('Camera or microphone access denied');
+          return null;
+        }
       }
     }
   }, []);
 
   // Cleanup peer connection and signaling with graceful peer departure notifications
   const cleanupCall = useCallback(() => {
+    outboundIceQueueRef.current = [];
+    remoteStreamRef.current = new MediaStream();
+
     // Notify peer over WebRTC data channel if open
     if (dataChannelRef.current?.readyState === 'open') {
       try {
@@ -338,26 +365,41 @@ export function useWebRTC(token: string | null, userId: string | null) {
     ) => {
       const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       pcRef.current = pc;
+      outboundIceQueueRef.current = [];
+      remoteStreamRef.current = new MediaStream();
 
       // Add local tracks
       currentStream.getTracks().forEach((track) => {
         pc.addTrack(track, currentStream);
       });
 
-      // Handle remote tracks with fallback for streams
+      // Handle remote tracks with guaranteed fresh MediaStream instance for React
       pc.ontrack = (event) => {
+        console.log('[WebRTC] Received remote track:', event.track.kind, event.track.id);
+
+        if (!remoteStreamRef.current.getTracks().some((t) => t.id === event.track.id)) {
+          remoteStreamRef.current.addTrack(event.track);
+        }
+
         if (event.streams?.[0]) {
-          setRemoteStream(event.streams[0]);
-        } else if (event.track) {
-          setRemoteStream((prev) => {
-            const stream = prev ? prev : new MediaStream();
-            stream.addTrack(event.track);
-            return stream;
+          event.streams[0].getTracks().forEach((track) => {
+            if (!remoteStreamRef.current.getTracks().some((t) => t.id === track.id)) {
+              remoteStreamRef.current.addTrack(track);
+            }
           });
         }
+
+        // Always create a fresh MediaStream instance so React updates state & re-renders video
+        const freshStream = new MediaStream(remoteStreamRef.current.getTracks());
+        setRemoteStream(freshStream);
+
+        event.track.onunmute = () => {
+          console.log('[WebRTC] Remote track unmuted:', event.track.kind);
+          setRemoteStream(new MediaStream(remoteStreamRef.current.getTracks()));
+        };
       };
 
-      // Trickle ICE candidates
+      // Trickle ICE candidates with outbound queue fallback
       pc.onicecandidate = (event) => {
         if (event.candidate?.candidate) {
           const payload: ClientMessage = {
@@ -372,13 +414,18 @@ export function useWebRTC(token: string | null, userId: string | null) {
           };
           if (signalingWsRef.current?.readyState === WebSocket.OPEN) {
             signalingWsRef.current.send(JSON.stringify(payload));
+          } else {
+            outboundIceQueueRef.current.push(payload);
           }
         }
       };
 
-      // Connection state changes: only teardown on terminal failed/closed
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'connected') {
+      const checkConnected = () => {
+        if (
+          pc.connectionState === 'connected' ||
+          pc.iceConnectionState === 'connected' ||
+          pc.iceConnectionState === 'completed'
+        ) {
           setCallState('connected');
           setStatusMessage('Connected with stranger');
           pc.getStats().then((stats) => {
@@ -390,13 +437,20 @@ export function useWebRTC(token: string | null, userId: string | null) {
               }
             });
           });
-        } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        }
+      };
+
+      // Connection state changes: only teardown on terminal failed/closed
+      pc.onconnectionstatechange = () => {
+        checkConnected();
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
           handleRemotePeerLeave('Connection ended');
         }
       };
 
       // ICE connection state changes
       pc.oniceconnectionstatechange = () => {
+        checkConnected();
         if (pc.iceConnectionState === 'failed') {
           handleRemotePeerLeave('Media connection failed');
         }
@@ -476,8 +530,16 @@ export function useWebRTC(token: string | null, userId: string | null) {
       signalingWsRef.current = sigWs;
 
       sigWs.onopen = () => {
+        // Flush any queued outbound ICE candidates
+        while (outboundIceQueueRef.current.length > 0) {
+          const candMsg = outboundIceQueueRef.current.shift();
+          if (candMsg && sigWs.readyState === WebSocket.OPEN) {
+            sigWs.send(JSON.stringify(candMsg));
+          }
+        }
+
         if (isInitiator) {
-          pc.createOffer()
+          pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true })
             .then((offer) => pc.setLocalDescription(offer))
             .then(() => {
               if (pc.localDescription?.sdp && sigWs.readyState === WebSocket.OPEN) {
@@ -524,6 +586,13 @@ export function useWebRTC(token: string | null, userId: string | null) {
                 };
                 sigWs.send(JSON.stringify(answerMsg));
               }
+              // Flush any queued outbound ICE candidates
+              while (outboundIceQueueRef.current.length > 0) {
+                const candMsg = outboundIceQueueRef.current.shift();
+                if (candMsg && sigWs.readyState === WebSocket.OPEN) {
+                  sigWs.send(JSON.stringify(candMsg));
+                }
+              }
               break;
             }
 
@@ -536,6 +605,13 @@ export function useWebRTC(token: string | null, userId: string | null) {
                 const cand = pendingIceCandidatesRef.current.shift();
                 if (cand?.candidate) {
                   await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+                }
+              }
+              // Flush any queued outbound ICE candidates
+              while (outboundIceQueueRef.current.length > 0) {
+                const candMsg = outboundIceQueueRef.current.shift();
+                if (candMsg && sigWs.readyState === WebSocket.OPEN) {
+                  sigWs.send(JSON.stringify(candMsg));
                 }
               }
               break;
@@ -569,8 +645,9 @@ export function useWebRTC(token: string | null, userId: string | null) {
   const findStranger = useCallback(async () => {
     if (!token) return;
 
-    let stream = localStream;
-    if (!stream) {
+    let stream = localStreamRef.current || localStream;
+    const hasLiveVideo = stream && stream.getVideoTracks().some((t) => t.readyState === 'live');
+    if (!stream || !hasLiveVideo) {
       stream = await startPreview();
       if (!stream) return;
     }
@@ -609,7 +686,8 @@ export function useWebRTC(token: string | null, userId: string | null) {
           setPeerId(msg.peerId);
           setCallState('connecting');
           setStatusMessage('Stranger found! Establishing video...');
-          connectToSignaling(msg.sessionId, msg.isInitiator, stream!);
+          const activeStream = localStreamRef.current || stream!;
+          connectToSignaling(msg.sessionId, msg.isInitiator, activeStream);
         } else if (msg.type === 'queue.status') {
           if (msg.message) setStatusMessage(msg.message);
         }

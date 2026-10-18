@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import type { FC, FormEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import 'emoji-picker-element';
 import type { CallState, ChatMessage } from '../hooks/useWebRTC.js';
 
@@ -57,31 +57,88 @@ export const InCallView: FC<InCallViewProps> = ({
 
   const QUICK_EMOJIS = ['👋', '😂', '🔥', '❤️', '👍', '🎉', '😮', '👏', '✨', '🚀'];
 
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLElement | null>(null);
 
-  // Attach local stream
-  useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
-      localVideoRef.current.play().catch(() => {});
+  // Play video with autoplay restriction recovery
+  const safelyPlayVideo = (videoEl: HTMLVideoElement, isMuted = false) => {
+    if (isMuted) {
+      videoEl.muted = true;
     }
-  }, [localStream]);
+    const playPromise = videoEl.play();
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        console.warn('[InCallView] Autoplay blocked, muting temporarily:', err);
+        videoEl.muted = true;
+        videoEl.play().catch(() => {});
 
-  // Attach remote stream & properly clear video frame on disconnect
+        // Unmute automatically on user interaction with the page
+        const unlock = () => {
+          if (!isMuted) {
+            videoEl.muted = false;
+          }
+          window.removeEventListener('click', unlock);
+          window.removeEventListener('touchstart', unlock);
+          window.removeEventListener('keydown', unlock);
+        };
+        window.addEventListener('click', unlock, { once: true });
+        window.addEventListener('touchstart', unlock, { once: true });
+        window.addEventListener('keydown', unlock, { once: true });
+      });
+    }
+  };
+
+  // Callback ref for remote video element
+  const setRemoteVideoRef = useCallback(
+    (node: HTMLVideoElement | null) => {
+      remoteVideoRef.current = node;
+      if (node && remoteStream) {
+        if (node.srcObject !== remoteStream) {
+          node.srcObject = remoteStream;
+        }
+        safelyPlayVideo(node, false);
+      }
+    },
+    [remoteStream]
+  );
+
+  // Callback ref for local video preview element
+  const setLocalVideoRef = useCallback(
+    (node: HTMLVideoElement | null) => {
+      localVideoRef.current = node;
+      if (node && localStream) {
+        if (node.srcObject !== localStream) {
+          node.srcObject = localStream;
+        }
+        safelyPlayVideo(node, true);
+      }
+    },
+    [localStream]
+  );
+
+  // Re-attach whenever stream changes
   useEffect(() => {
     if (remoteVideoRef.current) {
       if (remoteStream) {
         remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.play().catch(() => {});
+        safelyPlayVideo(remoteVideoRef.current, false);
       } else {
         remoteVideoRef.current.srcObject = null;
       }
     }
   }, [remoteStream]);
+
+  useEffect(() => {
+    if (localVideoRef.current) {
+      if (localStream) {
+        localVideoRef.current.srcObject = localStream;
+        safelyPlayVideo(localVideoRef.current, true);
+      }
+    }
+  }, [localStream]);
 
   // Auto-scroll chat to latest message
   useEffect(() => {
@@ -213,37 +270,48 @@ export const InCallView: FC<InCallViewProps> = ({
               </button>
             </div>
           </div>
-        ) : remoteStream ? (
-          <video ref={remoteVideoRef} autoPlay playsInline className="remote-video" />
         ) : (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-            <div
+          <>
+            <video
+              ref={setRemoteVideoRef}
+              autoPlay
+              playsInline
+              className="remote-video"
               style={{
-                width: 64,
-                height: 64,
-                borderRadius: '50%',
-                background: 'rgba(99, 102, 241, 0.1)',
-                border: '1px solid rgba(99, 102, 241, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 1.25rem',
+                display: remoteStream && callState === 'connected' ? 'block' : 'none',
               }}
-            >
-              <Sparkles size={28} color="var(--accent-primary)" />
-            </div>
-            <p style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f8fafc' }}>
-              {statusMessage || 'Connecting to stranger...'}
-            </p>
-            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-              Direct browser-to-browser WebRTC handshake in progress
-            </p>
-          </div>
+            />
+            {(!remoteStream || callState !== 'connected') && (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                <div
+                  style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: '50%',
+                    background: 'rgba(99, 102, 241, 0.1)',
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 1.25rem',
+                  }}
+                >
+                  <Sparkles size={28} color="var(--accent-primary)" />
+                </div>
+                <p style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f8fafc' }}>
+                  {statusMessage || 'Connecting to stranger...'}
+                </p>
+                <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                  Direct browser-to-browser WebRTC handshake in progress
+                </p>
+              </div>
+            )}
+          </>
         )}
 
         {/* Floating Local Picture-in-Picture Card */}
         <div className="local-video-card" style={{ opacity: isVideoDisabled ? 0.6 : 1 }}>
-          <video ref={localVideoRef} autoPlay playsInline muted className="local-video-preview" />
+          <video ref={setLocalVideoRef} autoPlay playsInline muted className="local-video-preview" />
           <div className="local-video-tag">
             <span className="live-dot" style={{ width: 6, height: 6 }} />
             <span>You</span>

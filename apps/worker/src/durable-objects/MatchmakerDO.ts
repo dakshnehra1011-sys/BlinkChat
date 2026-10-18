@@ -142,16 +142,20 @@ export class MatchmakerDO {
     });
 
     while (this.queue.length >= 2) {
-      const peer1 = this.queue.shift();
-      const peer2 = this.queue.shift();
+      const peer1 = this.queue[0];
+      if (!peer1) break;
+
+      const peer2Index = this.queue.findIndex((p, idx) => idx > 0 && p.userId !== peer1.userId);
+
+      // If no candidate with a different userId is found, we cannot form a match yet
+      if (peer2Index === -1) {
+        break;
+      }
+
+      const [peer2] = this.queue.splice(peer2Index, 1);
+      this.queue.shift(); // remove peer1
 
       if (!peer1 || !peer2) break;
-
-      // Prevent self-match
-      if (peer1.userId === peer2.userId) {
-        this.queue.unshift(peer1);
-        continue;
-      }
 
       const sessionId = crypto.randomUUID();
 
