@@ -141,7 +141,10 @@ authRoutes.post('/login', async (c) => {
   // Issue 7-day session token
   const exp = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
   const iat = Math.floor(Date.now() / 1000);
-  const token = await signJWT({ userId: user.id, email: user.email, exp, iat }, c.env.JWT_SECRET);
+  const token = await signJWT(
+    { userId: user.id, email: user.email, exp, iat },
+    c.env.JWT_SIGNING_SECRET
+  );
 
   return c.json({
     token,
@@ -161,7 +164,7 @@ authRoutes.get('/me', async (c) => {
   }
 
   const token = authHeader.substring(7);
-  const payload = await verifyJWT(token, c.env.JWT_SECRET);
+  const payload = await verifyJWT(token, c.env.JWT_SIGNING_SECRET);
   if (!payload) {
     return c.json({ error: 'Invalid or expired token' }, 401);
   }

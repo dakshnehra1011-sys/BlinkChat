@@ -2,13 +2,13 @@
 
 > Ultra-Low Latency Peer-to-Peer Random Video Chat Platform built on Cloudflare Workers, Durable Objects, D1, React, and WebRTC.
 
-BlinkChat provides instant, privacy-conscious random stranger video calling with sub-100ms latency. All video, audio, and text chat travel strictly peer-to-peer over WebRTC `RTCDataChannel` and DTLS-SRTP, ensuring zero centralized chat logging and minimal bandwidth overhead.
+BlinkChat uses WebRTC for one-to-one browser calls. Workers and Durable Objects handle authentication, matchmaking, and signaling; call media and in-call chat use the peer connection. Direct connectivity depends on both users' networks. TURN is not currently configured, so some restrictive networks may fail to connect. Latency and real two-peer connectivity need to be measured across real networks before making performance guarantees.
 
 ---
 
 ## 🌟 Key Features
 
-- **Ultra-Low Latency WebRTC**: Direct browser-to-browser media streaming with automatic STUN/TURN fallback.
+- **WebRTC calls**: Direct browser-to-browser media when ICE can establish a peer path. TURN support is configurable but not active in the current deployment.
 - **Edge Matchmaker (Durable Objects)**: Distributed FIFO queue actor (`MatchmakerDO`) preventing self-matches and duplicate entries.
 - **Dedicated Signaling Rooms (`SignalingDO`)**: Ephemeral Durable Object session instances coordinating SDP Offer/Answer and Trickle ICE candidate forwarding.
 - **Zero-Logging P2P Chat**: Live text and emoji messaging powered by WebRTC `RTCDataChannel`. Never stored in any database.
@@ -29,7 +29,7 @@ WebPlateform/
 │   └── database/                # Drizzle ORM schema, SQL migrations for Cloudflare D1
 ├── tests/                       # Vitest test suite for protocol, crypto, and queue invariants
 ├── docs/                        # Architecture, deployment guide, and tooling specifications
-└── pnpm-workspace.yaml
+└── bun.lock
 ```
 
 ---
@@ -39,7 +39,7 @@ WebPlateform/
 ### 1. Install Dependencies
 
 ```bash
-pnpm install
+bun install
 ```
 
 ### 2. Run Local Development
@@ -49,7 +49,7 @@ In two separate terminals:
 **Backend (Cloudflare Worker & Durable Objects):**
 
 ```bash
-pnpm dev:worker
+bun run dev:worker
 ```
 
 Worker starts at `http://localhost:8787` with local Miniflare D1 database and Durable Objects emulation.
@@ -57,7 +57,7 @@ Worker starts at `http://localhost:8787` with local Miniflare D1 database and Du
 **Frontend (React Web App):**
 
 ```bash
-pnpm dev:web
+bun run dev:web
 ```
 
 Web app starts at `http://localhost:5173` with instant Vite HMR.
@@ -68,13 +68,13 @@ Web app starts at `http://localhost:5173` with instant Vite HMR.
 
 ```bash
 # Run unit & integration test suite (Vitest)
-pnpm test
+bun run test
 
 # Run strict TypeScript typecheck across all 4 packages
-pnpm typecheck
+bun run typecheck
 
 # Build all packages for production
-pnpm build
+bun run build
 ```
 
 ---
@@ -82,6 +82,7 @@ pnpm build
 ## 📖 Documentation
 
 - [System Architecture](docs/ARCHITECTURE.md)
+- [Real-time media options and connectivity limits](docs/REALTIME_OPTIONS.md)
 - [Master Tech Stack Guide](TECH_STACK_AND_ARCHITECTURE.md)
 - [Deployment & Cost Model](docs/DEPLOYMENT.md)
 - [Agent Guidelines (AGENTS.md)](AGENTS.md)

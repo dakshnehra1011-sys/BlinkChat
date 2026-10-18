@@ -12,6 +12,7 @@ import {
   Sparkles,
   Video,
   VideoOff,
+  Volume2,
   X,
 } from 'lucide-react';
 import type { FC, FormEvent } from 'react';
@@ -54,6 +55,8 @@ export const InCallView: FC<InCallViewProps> = ({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(true);
   const [chatWarning, setChatWarning] = useState<string | null>(null);
+  const [decodedRemoteVideoTrackId, setDecodedRemoteVideoTrackId] = useState<string | null>(null);
+  const [remoteAudioNeedsTap, setRemoteAudioNeedsTap] = useState(false);
 
   const QUICK_EMOJIS = ['👋', '😂', '🔥', '❤️', '👍', '🎉', '😮', '👏', '✨', '🚀'];
 
@@ -62,33 +65,62 @@ export const InCallView: FC<InCallViewProps> = ({
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLElement | null>(null);
+  const activeRemoteVideoTrack = remoteStream
+    ?.getVideoTracks()
+    .find((track) => track.readyState === 'live' && !track.muted);
+  const hasMicrophoneTrack = Boolean(
+    localStream?.getAudioTracks().some((track) => track.readyState === 'live')
+  );
+  const activeRemoteVideoTrackId = activeRemoteVideoTrack?.id;
+  const hasRemoteVideo =
+    Boolean(activeRemoteVideoTrackId) && decodedRemoteVideoTrackId === activeRemoteVideoTrackId;
+
+  useEffect(() => {
+    setDecodedRemoteVideoTrackId((current) =>
+      current === activeRemoteVideoTrackId ? current : null
+    );
+  }, [activeRemoteVideoTrackId]);
 
   // Play video with autoplay restriction recovery
-  const safelyPlayVideo = (videoEl: HTMLVideoElement, isMuted = false) => {
-    if (isMuted) {
-      videoEl.muted = true;
-    }
+  const safelyPlayVideo = (videoEl: HTMLVideoElement, isMuted = false, retry = 0) => {
+    videoEl.muted = isMuted;
     const playPromise = videoEl.play();
     if (playPromise !== undefined) {
-      playPromise.catch((err) => {
-        console.warn('[InCallView] Autoplay blocked, muting temporarily:', err);
-        videoEl.muted = true;
-        videoEl.play().catch(() => {});
-
-        // Unmute automatically on user interaction with the page
-        const unlock = () => {
-          if (!isMuted) {
-            videoEl.muted = false;
+      playPromise
+        .then(() => {
+          if (!isMuted && !videoEl.muted) setRemoteAudioNeedsTap(false);
+        })
+        .catch((err) => {
+          if ((err as { name?: string })?.name === 'AbortError') {
+            if (retry < 2) {
+              window.setTimeout(() => {
+                if (videoEl.isConnected) safelyPlayVideo(videoEl, isMuted, retry + 1);
+              }, 100);
+            }
+            return;
           }
-          window.removeEventListener('click', unlock);
-          window.removeEventListener('touchstart', unlock);
-          window.removeEventListener('keydown', unlock);
-        };
-        window.addEventListener('click', unlock, { once: true });
-        window.addEventListener('touchstart', unlock, { once: true });
-        window.addEventListener('keydown', unlock, { once: true });
-      });
+
+          console.warn('[InCallView] Autoplay blocked, muting temporarily:', err);
+          if (isMuted) return;
+          videoEl.muted = true;
+          setRemoteAudioNeedsTap(true);
+          videoEl.play().catch(() => {});
+        });
     }
+  };
+
+  const enableRemoteAudio = () => {
+    const videoEl = remoteVideoRef.current;
+    if (!videoEl) return;
+
+    videoEl.muted = false;
+    videoEl
+      .play()
+      .then(() => setRemoteAudioNeedsTap(false))
+      .catch(() => {
+        videoEl.muted = true;
+        setRemoteAudioNeedsTap(true);
+      });
   };
 
   // Callback ref for remote video element
@@ -118,6 +150,14 @@ export const InCallView: FC<InCallViewProps> = ({
     },
     [localStream]
   );
+
+  const markRemoteVideoReady = useCallback(() => {
+    const videoStream = remoteVideoRef.current?.srcObject as MediaStream | null;
+    const track = videoStream
+      ?.getVideoTracks()
+      .find((candidate) => candidate.readyState === 'live' && !candidate.muted);
+    if (track) setDecodedRemoteVideoTrackId(track.id);
+  }, []);
 
   // Re-attach whenever stream changes
   useEffect(() => {
@@ -278,16 +318,35 @@ export const InCallView: FC<InCallViewProps> = ({
               playsInline
               className="remote-video"
               style={{
-                display:
-                  callState === 'connected' ||
-                  (Boolean(remoteStream) && (remoteStream?.getVideoTracks()?.length ?? 0) > 0)
-                    ? 'block'
-                    : 'none',
+                visibility: hasRemoteVideo ? 'visible' : 'hidden',
               }}
+              onLoadedData={markRemoteVideoReady}
+              onPlaying={markRemoteVideoReady}
             />
-            {callState !== 'connected' &&
-              (!remoteStream || (remoteStream?.getVideoTracks()?.length ?? 0) === 0) && (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+            {remoteAudioNeedsTap &&
+              remoteStream
+                ?.getAudioTracks()
+                .some((track) => track.readyState === 'live' && !track.muted) && (
+                <button
+                  type="button"
+                  className="remote-audio-enable"
+                  onClick={enableRemoteAudio}
+                  aria-label="Enable sound from stranger"
+                >
+                  <Volume2 size={18} />
+                  Tap to hear stranger
+                </button>
+              )}
+            {!hasRemoteVideo && (
+              <div
+                style={{
+                  position: 'relative',
+                  zIndex: 1,
+                  textAlign: 'center',
+                  color: 'var(--text-muted)',
+                  padding: '2rem',
+                }}
+              >
                 <div
                   style={{
                     width: 64,
@@ -304,7 +363,9 @@ export const InCallView: FC<InCallViewProps> = ({
                   <Sparkles size={28} color="var(--accent-primary)" />
                 </div>
                 <p style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f8fafc' }}>
-                  {statusMessage || 'Connecting to stranger...'}
+                  {callState === 'connected'
+                    ? 'Waiting for the other camera...'
+                    : statusMessage || 'Connecting to stranger...'}
                 </p>
                 <p
                   style={{
@@ -337,15 +398,34 @@ export const InCallView: FC<InCallViewProps> = ({
           </div>
         </div>
 
+        {!hasMicrophoneTrack && (
+          <div className="call-media-warning" role="status">
+            Microphone unavailable. Allow microphone access in browser settings, then rejoin.
+          </div>
+        )}
+
         {/* Floating In-Call Controls Dock */}
         <div className="call-controls-overlay">
           <button
             type="button"
             className={`dock-btn ${isAudioMuted ? 'dock-btn-danger' : ''}`}
             onClick={onToggleAudio}
-            title={isAudioMuted ? 'Unmute Mic' : 'Mute Mic'}
+            aria-label={isAudioMuted ? 'Turn microphone on' : 'Turn microphone off'}
+            aria-pressed={!isAudioMuted}
+            disabled={!hasMicrophoneTrack}
+            title={
+              hasMicrophoneTrack
+                ? isAudioMuted
+                  ? 'Unmute Mic'
+                  : 'Mute Mic'
+                : 'Microphone unavailable. Check browser permissions.'
+            }
           >
-            {isAudioMuted ? <MicOff size={19} /> : <Mic size={19} />}
+            {isAudioMuted ? (
+              <MicOff size={21} strokeWidth={2.2} />
+            ) : (
+              <Mic size={21} strokeWidth={2.2} />
+            )}
           </button>
 
           <button
@@ -353,8 +433,14 @@ export const InCallView: FC<InCallViewProps> = ({
             className={`dock-btn ${isVideoDisabled ? 'dock-btn-danger' : ''}`}
             onClick={onToggleVideo}
             title={isVideoDisabled ? 'Enable Video' : 'Disable Video'}
+            aria-label={isVideoDisabled ? 'Turn camera on' : 'Turn camera off'}
+            aria-pressed={!isVideoDisabled}
           >
-            {isVideoDisabled ? <VideoOff size={19} /> : <Video size={19} />}
+            {isVideoDisabled ? (
+              <VideoOff size={21} strokeWidth={2.2} />
+            ) : (
+              <Video size={21} strokeWidth={2.2} />
+            )}
           </button>
 
           <button
@@ -362,8 +448,9 @@ export const InCallView: FC<InCallViewProps> = ({
             className="dock-btn-next"
             onClick={onNextStranger}
             title="Next Stranger [Esc key]"
+            aria-label="Skip this person and find the next person"
           >
-            <SkipForward size={18} />
+            <SkipForward size={19} strokeWidth={2.4} />
             <span>Next</span>
           </button>
 
@@ -372,8 +459,9 @@ export const InCallView: FC<InCallViewProps> = ({
             className="dock-btn-leave"
             onClick={onLeaveCall}
             title="Leave Call and return to Lobby"
+            aria-label="End call and leave"
           >
-            <PhoneOff size={19} />
+            <PhoneOff size={21} strokeWidth={2.3} />
           </button>
 
           <button
@@ -381,6 +469,8 @@ export const InCallView: FC<InCallViewProps> = ({
             className="dock-btn"
             onClick={() => setIsChatOpen(!isChatOpen)}
             title={isChatOpen ? 'Hide Chat' : 'Show Chat'}
+            aria-label={isChatOpen ? 'Hide chat' : 'Show chat'}
+            aria-pressed={isChatOpen}
             style={{ position: 'relative' }}
           >
             <MessageSquare size={19} />
@@ -404,6 +494,7 @@ export const InCallView: FC<InCallViewProps> = ({
             className="dock-btn"
             onClick={onOpenReport}
             title="Report inappropriate behavior"
+            aria-label="Report inappropriate behavior"
           >
             <ShieldAlert size={19} color="var(--accent-danger)" />
           </button>

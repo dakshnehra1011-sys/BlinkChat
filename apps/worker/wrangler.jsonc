@@ -5,34 +5,32 @@
   "compatibility_date": "2025-02-01",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "ENVIRONMENT": "development",
-    "JWT_SECRET": "development_super_secret_jwt_key_min_32_characters_long_for_security",
-    "STUN_SERVERS": "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302"
+    "STUN_SERVERS": "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302",
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "blinkchat_d1",
       "database_id": "978d1d91-cdf7-45a6-8cc9-d79115386fcc",
-      "migrations_dir": "../../packages/database/src/migrations"
-    }
+      "migrations_dir": "../../packages/database/src/migrations",
+    },
   ],
   "durable_objects": {
     "bindings": [
       {
         "name": "MATCHMAKER",
-        "class_name": "MatchmakerDO"
+        "class_name": "MatchmakerDO",
       },
       {
         "name": "SIGNALING",
-        "class_name": "SignalingDO"
-      }
-    ]
+        "class_name": "SignalingDO",
+      },
+    ],
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["MatchmakerDO", "SignalingDO"]
-    }
-  ]
+      "new_sqlite_classes": ["MatchmakerDO", "SignalingDO"],
+    },
+  ],
 }

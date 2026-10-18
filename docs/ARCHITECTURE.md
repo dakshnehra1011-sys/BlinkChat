@@ -4,7 +4,7 @@
 
 ## Overview
 
-BlinkChat is an ultra-low latency peer-to-peer random video chat application engineered for high concurrency, security, and edge performance.
+BlinkChat is a one-to-one peer-to-peer video chat application. Workers and Durable Objects provide the control plane; media is intended to flow between browsers. Its latency and capacity have not been established by production load tests.
 
 ```
                       ┌──────────────────────┐

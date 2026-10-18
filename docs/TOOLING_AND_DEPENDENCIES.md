@@ -2,8 +2,8 @@
 
 ## 1. Monorepo Architecture
 
-- **Package Manager**: `pnpm` with workspaces (`pnpm-workspace.yaml`)
-- **Node Runtime**: `>= 20.0.0` (active: `v24.21.0`)
+- **Runtime / Package Manager**: Bun 1.4.3 manages dependencies and scripts; Cloudflare Workers execute on Cloudflare's runtime.
+- **Node Compatibility**: Node.js-compatible tooling is used for Vite, Wrangler, and CI actions.
 - **TypeScript**: Strict configuration (`tsconfig.base.json` across packages)
 - **Monorepo Structure**:
   - `apps/web`: React 19 / 18, Vite, TanStack Router, TanStack Query, Tailwind CSS / Vanilla CSS dark system, Lucide icons, `emoji-picker-element`
@@ -19,7 +19,7 @@
   - `SignalingDO`: Ephemeral WebRTC session coordination, offer/answer exchange, ICE relay, participant verification
 - **Cloudflare D1**: Distributed SQLite relational database for users, sessions, verification tokens, reports, blocks
 - **Drizzle ORM & Drizzle Kit**: Type-safe schema definition and migration manager
-- **Local Emulator**: Wrangler v3 / Miniflare
+- **Local Emulator**: Wrangler / Miniflare
 
 ## 3. WebRTC & Real-time Protocols
 
@@ -31,11 +31,12 @@
 - **P2P Data Channel**: `RTCDataChannel` (label: `blinkchat-chat`, ordered, reliable) for direct peer text and emoji transmission
 - **ICE / TURN Strategy**:
   - Default: STUN servers (`stun:stun.l.google.com:19302`, `stun:stun1.l.google.com:19302`)
-  - Production fallback: Configurable TURN credentials API with short-lived ephemeral HMAC tokens (e.g. Cloudflare Calls / Coturn / Twilio Network Traversal)
+  - Optional fallback: Short-lived Cloudflare Realtime TURN credentials, Metered credentials, or static TURN credentials. TURN relays media and is not a direct peer connection.
+  - Current deployment status: no TURN credentials are configured (`turnAvailable: false`), so users whose NAT/firewall blocks direct ICE paths may fail to connect.
 
 ## 4. Testing & Code Quality
 
 - **Unit & Integration**: Vitest with node/jsdom environments
-- **End-to-End**: Playwright for browser interactions and two-peer WebRTC tests
+- **End-to-End**: Playwright covers browser UI and responsive layouts with mocked media; it does not currently prove a real two-peer WebRTC call.
 - **Linting & Formatting**: Biome or ESLint / Prettier
 - **Continuous Integration**: GitHub Actions workflow running lint, types, unit tests, coverage, and build checks

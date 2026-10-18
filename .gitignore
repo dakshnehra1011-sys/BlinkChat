@@ -12,5 +12,6 @@ test-results/
 playwright-report/
 *.local
 .env
+**/.dev.vars
 *.zip
 

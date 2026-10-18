@@ -3,6 +3,7 @@ import type { Env } from '../types.js';
 
 interface SessionPeer {
   userId: string;
+  accountUserId: string;
   ws: WebSocket;
 }
 
@@ -21,6 +22,7 @@ export class SignalingDO {
     const url = new URL(request.url);
     const userId = url.searchParams.get('userId');
     const sessionId = url.searchParams.get('sessionId');
+    const accountUserId = url.searchParams.get('accountUserId') || userId;
 
     if (!userId || !sessionId) {
       return new Response('Missing userId or sessionId', { status: 400 });
@@ -34,11 +36,15 @@ export class SignalingDO {
     if (this.peers.size >= 2 && !this.peers.has(userId)) {
       return new Response('Session is full', { status: 403 });
     }
+    const otherPeer = this.getOtherPeer(userId);
+    if (otherPeer?.accountUserId === accountUserId) {
+      return new Response('A session cannot contain the same account twice', { status: 403 });
+    }
 
     const pair = new WebSocketPair();
     const [clientWs, serverWs] = Object.values(pair);
 
-    this.handleWebSocket(serverWs!, userId, sessionId);
+    this.handleWebSocket(serverWs!, userId, sessionId, accountUserId || userId);
 
     try {
       return new Response(null, {
@@ -50,10 +56,16 @@ export class SignalingDO {
     }
   }
 
-  handleWebSocket(ws: WebSocket, userId: string, sessionId: string): void {
+  handleWebSocket(ws: WebSocket, userId: string, sessionId: string, accountUserId = userId): void {
+    const existing = this.peers.get(userId);
+    if (existing && existing.ws !== ws) {
+      try {
+        existing.ws.close(1000, 'Connection replaced');
+      } catch {}
+    }
     ws.accept();
 
-    this.peers.set(userId, { userId, ws });
+    this.peers.set(userId, { userId, accountUserId, ws });
 
     // Flush any pending messages that arrived before this peer connected with multi-stage retry
     const flushPending = () => {
@@ -98,6 +110,20 @@ export class SignalingDO {
         }
 
         const msg: ClientMessage = parsed.data;
+
+        // Each Durable Object is a single session. Reject mismatched payload IDs
+        // instead of letting a client confuse the remote peer's session state.
+        if ('sessionId' in msg && msg.sessionId !== sessionId) {
+          this.sendMessage(ws, {
+            type: 'error',
+            code: 'SESSION_MISMATCH',
+            message: 'Message does not belong to this session',
+          });
+          return;
+        }
+
+        // Replaced/closed sockets must not continue signaling as the current peer.
+        if (this.peers.get(userId)?.ws !== ws) return;
         const otherPeer = this.getOtherPeer(userId);
 
         switch (msg.type) {
@@ -194,6 +220,7 @@ export class SignalingDO {
     });
 
     ws.addEventListener('close', () => {
+      if (this.peers.get(userId)?.ws !== ws) return;
       this.peers.delete(userId);
       const otherPeer = this.getOtherPeer(userId);
       if (otherPeer) {
@@ -207,7 +234,7 @@ export class SignalingDO {
     });
 
     ws.addEventListener('error', () => {
-      this.peers.delete(userId);
+      if (this.peers.get(userId)?.ws === ws) this.peers.delete(userId);
     });
   }
 

@@ -1,0 +1,2 @@
+JWT_SIGNING_SECRET=replace-with-a-random-secret-at-least-32-characters-long
+ENVIRONMENT=development

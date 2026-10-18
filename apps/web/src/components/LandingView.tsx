@@ -15,11 +15,7 @@ export const LandingView: FC<LandingViewProps> = ({ onStart, isLoggedIn }) => {
         call recording, zero chat logging, and instant edge matchmaking.
       </p>
 
-      <button
-        className="btn btn-primary"
-        style={{ padding: '0.9rem 2.4rem', fontSize: '1.05rem', borderRadius: '12px' }}
-        onClick={onStart}
-      >
+      <button className="btn btn-primary landing-cta" onClick={onStart}>
         <Video size={20} />
         {isLoggedIn ? 'Enter Video Chat Stage' : 'Start Video Chat Now'}
         <ArrowRight size={18} />

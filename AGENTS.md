@@ -12,7 +12,12 @@ This repository houses **BlinkChat**, a production-oriented, privacy-preserving,
 ## 2. Test-Driven Development (TDD)
 
 - All domain logic, authentication flows, matchmaking queue transitions, and signaling message validations must have corresponding Vitest tests.
-- Run tests via `pnpm test`.
+- Write regression tests before implementation changes. Keep unit/integration tests in `tests/` and real browser E2E tests in `e2e/`.
+- E2E coverage must exercise the app through the local Worker/D1 stack. For call changes, cover multiple peers, received media, and RTCDataChannel chat.
+- CI enforces >90% aggregate coverage for statements, branches, functions, and lines with `bun run test:coverage`.
+- Run browser E2E via `bun run db:migrate:local` followed by `bun run test:e2e`.
+- Run `bun run lint`, `bun run format:check`, `bun run typecheck`, and `bun run build` before handing changes off.
+- Production deployment and remote D1 migrations happen only through the GitHub Actions workflow after validation succeeds.
 - Do not bypass tests or leave non-functional placeholders.
 
 ## 3. Security & Privacy Guardrails
@@ -23,9 +28,9 @@ This repository houses **BlinkChat**, a production-oriented, privacy-preserving,
 
 ## 4. Key Commands
 
-- Install: `pnpm install`
-- Dev (Worker): `pnpm --filter worker dev`
-- Dev (Web): `pnpm --filter web dev`
-- Build: `pnpm build`
-- Test: `pnpm test`
-- Typecheck: `pnpm typecheck`
+- Install: `bun install`
+- Dev (Worker): `bun run dev:worker`
+- Dev (Web): `bun run dev:web`
+- Build: `bun run build`
+- Test: `bun run test`
+- Typecheck: `bun run typecheck`
