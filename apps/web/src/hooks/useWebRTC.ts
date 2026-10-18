@@ -148,6 +148,18 @@ export function useWebRTC(token: string | null, userId: string | null) {
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
+    {
+      urls: [
+        'turn:standard.relay.metered.ca:80',
+        'turn:standard.relay.metered.ca:443',
+        'turn:standard.relay.metered.ca:80?transport=tcp',
+        'turn:standard.relay.metered.ca:443?transport=tcp',
+        'turn:relay.metered.ca:80',
+        'turn:relay.metered.ca:80?transport=tcp',
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
   ]);
 
   const clientIdRef = useRef<string>(
@@ -415,8 +427,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
           pc.connectionState === 'connected' ||
           pc.iceConnectionState === 'connected' ||
           pc.iceConnectionState === 'completed' ||
-          dataChannelRef.current?.readyState === 'open' ||
-          remoteStreamRef.current.getVideoTracks().length > 0
+          dataChannelRef.current?.readyState === 'open'
         ) {
           setCallState('connected');
           setStatusMessage('Connected with stranger');
@@ -602,6 +613,20 @@ export function useWebRTC(token: string | null, userId: string | null) {
               }
             })
             .catch((err) => console.error('Error creating offer:', err));
+
+          // Retransmit offer after 1.5s if remoteDescription is not yet set (guarantees delivery across WAN)
+          setTimeout(() => {
+            if (!pc.remoteDescription && sigWs.readyState === WebSocket.OPEN && pc.localDescription?.sdp) {
+              console.log('[WebRTC] Resending offer to guarantee signaling across WAN');
+              sigWs.send(
+                JSON.stringify({
+                  type: 'signal.offer',
+                  sessionId: currentSessionId,
+                  sdp: pc.localDescription.sdp,
+                })
+              );
+            }
+          }, 1500);
         }
       };
 

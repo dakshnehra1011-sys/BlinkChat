@@ -55,18 +55,31 @@ export class SignalingDO {
 
     this.peers.set(userId, { userId, ws });
 
-    // Flush any pending messages that arrived before this peer connected
-    const remainingPending: typeof this.pendingMessages = [];
-    for (const pending of this.pendingMessages) {
-      if (pending.fromUserId !== userId) {
-        this.sendMessage(ws, pending.message);
-      } else {
-        remainingPending.push(pending);
+    // Flush any pending messages that arrived before this peer connected with multi-stage retry
+    const flushPending = () => {
+      if (this.pendingMessages.length === 0) return;
+      const remaining: typeof this.pendingMessages = [];
+      for (const pending of this.pendingMessages) {
+        if (pending.fromUserId !== userId) {
+          const sent = this.sendMessage(ws, pending.message);
+          if (!sent) remaining.push(pending);
+        } else {
+          remaining.push(pending);
+        }
       }
-    }
-    this.pendingMessages = remainingPending;
+      this.pendingMessages = remaining;
+    };
+
+    flushPending();
+    queueMicrotask(flushPending);
+    setTimeout(flushPending, 50);
+    setTimeout(flushPending, 150);
+    setTimeout(flushPending, 350);
 
     ws.addEventListener('message', async (event) => {
+      if (this.pendingMessages.length > 0) {
+        flushPending();
+      }
       try {
         const raw =
           typeof event.data === 'string'
@@ -215,13 +228,16 @@ export class SignalingDO {
     this.peers.clear();
   }
 
-  sendMessage(ws: WebSocket, msg: ServerMessage): void {
+  sendMessage(ws: WebSocket, msg: ServerMessage): boolean {
     try {
-      if (ws.readyState === WebSocket.OPEN) {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === 0) {
         ws.send(JSON.stringify(msg));
+        return true;
       }
+      return false;
     } catch (err) {
       console.error('Failed to send signaling message:', err);
+      return false;
     }
   }
 }

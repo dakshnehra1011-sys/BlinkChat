@@ -37,7 +37,22 @@ app.get('/api/config/ice', (c) => {
     .split(',')
     .map((url) => ({ urls: url.trim() }));
 
-  const iceServers: RTCIceServer[] = [...stunList];
+  const iceServers: RTCIceServer[] = [
+    ...stunList,
+    // Active Metered Standard Relay TURN servers (Symmetric NAT / 4G / 5G / corporate Wi-Fi fallback)
+    {
+      urls: [
+        'turn:standard.relay.metered.ca:80',
+        'turn:standard.relay.metered.ca:443',
+        'turn:standard.relay.metered.ca:80?transport=tcp',
+        'turn:standard.relay.metered.ca:443?transport=tcp',
+        'turn:relay.metered.ca:80',
+        'turn:relay.metered.ca:80?transport=tcp',
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+  ];
 
   if (c.env.TURN_URLS && c.env.TURN_USERNAME && c.env.TURN_CREDENTIAL) {
     iceServers.push({

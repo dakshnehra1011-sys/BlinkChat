@@ -278,14 +278,10 @@ export const InCallView: FC<InCallViewProps> = ({
               playsInline
               className="remote-video"
               style={{
-                display:
-                  remoteStream && (callState === 'connected' || remoteStream.getVideoTracks().length > 0)
-                    ? 'block'
-                    : 'none',
+                display: callState === 'connected' && remoteStream ? 'block' : 'none',
               }}
             />
-            {(!remoteStream ||
-              (callState !== 'connected' && remoteStream.getVideoTracks().length === 0)) && (
+            {callState !== 'connected' && (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
                 <div
                   style={{
