@@ -28,15 +28,28 @@ app.get('/health', (c) => c.json({ status: 'ok', service: 'BlinkChat Edge Worker
 app.route('/api/auth', authRoutes);
 app.route('/api/reports', reportRoutes);
 
-// Return ICE server configuration (STUN + optional TURN)
+// Return ICE server configuration (STUN + OpenRelay TURN + optional custom TURN)
 app.get('/api/config/ice', (c) => {
   const stunList = (
-    c.env.STUN_SERVERS || 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302'
+    c.env.STUN_SERVERS ||
+    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:openrelay.metered.ca:80'
   )
     .split(',')
     .map((url) => ({ urls: url.trim() }));
 
-  const iceServers: RTCIceServer[] = [...stunList];
+  const iceServers: RTCIceServer[] = [
+    ...stunList,
+    // Free public TURN servers for NAT traversal (symmetric NAT / 4G / 5G / corporate Wi-Fi)
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turns:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+  ];
 
   if (c.env.TURN_URLS && c.env.TURN_USERNAME && c.env.TURN_CREDENTIAL) {
     iceServers.push({
@@ -61,13 +74,17 @@ app.get('/api/ws/match', async (c) => {
     return c.text('Invalid or expired token', 401);
   }
 
+  // Client ID allows distinct tabs/devices to participate seamlessly
+  const clientId = c.req.query('clientId') || payload.userId;
+
   // Get singleton Matchmaker DO instance
   const id = c.env.MATCHMAKER.idFromName('global-matchmaker');
   const matchmaker = c.env.MATCHMAKER.get(id);
 
   // Forward the request to MatchmakerDO with verified userId
   const url = new URL(c.req.url);
-  url.searchParams.set('userId', payload.userId);
+  url.searchParams.set('userId', clientId);
+  url.searchParams.set('accountUserId', payload.userId);
 
   return matchmaker.fetch(new Request(url.toString(), c.req.raw));
 });
@@ -86,12 +103,15 @@ app.get('/api/ws/session', async (c) => {
     return c.text('Invalid or expired token', 401);
   }
 
+  const clientId = c.req.query('clientId') || payload.userId;
+
   // Get Signaling DO instance for this sessionId
   const id = c.env.SIGNALING.idFromName(sessionId);
   const signaling = c.env.SIGNALING.get(id);
 
   const url = new URL(c.req.url);
-  url.searchParams.set('userId', payload.userId);
+  url.searchParams.set('userId', clientId);
+  url.searchParams.set('accountUserId', payload.userId);
   url.searchParams.set('sessionId', sessionId);
 
   return signaling.fetch(new Request(url.toString(), c.req.raw));

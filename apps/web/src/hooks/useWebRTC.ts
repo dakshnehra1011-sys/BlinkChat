@@ -119,7 +119,50 @@ export function useWebRTC(token: string | null, userId: string | null) {
   const iceServersRef = useRef<RTCIceServer[]>([
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:openrelay.metered.ca:80' },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turns:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
   ]);
+
+  const clientIdRef = useRef<string>(
+    (() => {
+      try {
+        let id = sessionStorage.getItem('blinkchat_client_id');
+        if (!id) {
+          id = crypto.randomUUID();
+          sessionStorage.setItem('blinkchat_client_id', id);
+        }
+        return id;
+      } catch {
+        return crypto.randomUUID();
+      }
+    })()
+  );
+
+  const callStateRef = useRef<CallState>(callState);
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
+
+  // Proactive heartbeat keepalive while queued
+  useEffect(() => {
+    if (callState !== 'queued') return;
+
+    const interval = setInterval(() => {
+      if (matchWsRef.current?.readyState === WebSocket.OPEN) {
+        matchWsRef.current.send(JSON.stringify({ type: 'heartbeat' }));
+      }
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [callState]);
 
   // TanStack Query for ICE server configuration
   const { data: iceConfig } = useQuery<{ iceServers: RTCIceServer[] }>({
@@ -128,10 +171,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
       const res = await fetch(getApiUrl('/api/config/ice'));
       if (!res.ok)
         return {
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-          ],
+          iceServers: iceServersRef.current,
         };
       return res.json();
     },
@@ -294,8 +334,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
     (
       currentSessionId: string,
       isInitiator: boolean,
-      currentStream: MediaStream,
-      sigWs: WebSocket
+      currentStream: MediaStream
     ) => {
       const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
       pcRef.current = pc;
@@ -305,16 +344,22 @@ export function useWebRTC(token: string | null, userId: string | null) {
         pc.addTrack(track, currentStream);
       });
 
-      // Handle remote tracks
+      // Handle remote tracks with fallback for streams
       pc.ontrack = (event) => {
         if (event.streams?.[0]) {
           setRemoteStream(event.streams[0]);
+        } else if (event.track) {
+          setRemoteStream((prev) => {
+            const stream = prev ? prev : new MediaStream();
+            stream.addTrack(event.track);
+            return stream;
+          });
         }
       };
 
       // Trickle ICE candidates
       pc.onicecandidate = (event) => {
-        if (event.candidate && sigWs.readyState === WebSocket.OPEN) {
+        if (event.candidate?.candidate) {
           const payload: ClientMessage = {
             type: 'signal.ice',
             sessionId: currentSessionId,
@@ -325,16 +370,17 @@ export function useWebRTC(token: string | null, userId: string | null) {
               usernameFragment: event.candidate.usernameFragment,
             },
           };
-          sigWs.send(JSON.stringify(payload));
+          if (signalingWsRef.current?.readyState === WebSocket.OPEN) {
+            signalingWsRef.current.send(JSON.stringify(payload));
+          }
         }
       };
 
-      // Connection state changes
+      // Connection state changes: only teardown on terminal failed/closed
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'connected') {
           setCallState('connected');
           setStatusMessage('Connected with stranger');
-          // Inspect stats to check if direct or relay
           pc.getStats().then((stats) => {
             stats.forEach((report) => {
               if (report.type === 'candidate-pair' && report.state === 'succeeded') {
@@ -344,19 +390,15 @@ export function useWebRTC(token: string | null, userId: string | null) {
               }
             });
           });
-        } else if (
-          pc.connectionState === 'failed' ||
-          pc.connectionState === 'disconnected' ||
-          pc.connectionState === 'closed'
-        ) {
-          handleRemotePeerLeave('Stranger left the call');
+        } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          handleRemotePeerLeave('Connection ended');
         }
       };
 
       // ICE connection state changes
       pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-          handleRemotePeerLeave('Stranger disconnected');
+        if (pc.iceConnectionState === 'failed') {
+          handleRemotePeerLeave('Media connection failed');
         }
       };
 
@@ -402,21 +444,6 @@ export function useWebRTC(token: string | null, userId: string | null) {
         // Initiator creates data channel
         const dc = pc.createDataChannel('blinkchat-chat', { ordered: true });
         setupDataChannelEvents(dc);
-
-        // Initiator creates offer
-        pc.createOffer()
-          .then((offer) => pc.setLocalDescription(offer))
-          .then(() => {
-            if (pc.localDescription?.sdp && sigWs.readyState === WebSocket.OPEN) {
-              const offerMsg: ClientMessage = {
-                type: 'signal.offer',
-                sessionId: currentSessionId,
-                sdp: pc.localDescription.sdp,
-              };
-              sigWs.send(JSON.stringify(offerMsg));
-            }
-          })
-          .catch((err) => console.error('Error creating offer:', err));
       } else {
         // Receiver listens for data channel
         pc.ondatachannel = (event) => {
@@ -436,17 +463,34 @@ export function useWebRTC(token: string | null, userId: string | null) {
 
       pendingIceCandidatesRef.current = [];
 
+      // Synchronously initialize the RTCPeerConnection BEFORE connecting to signaling
+      const pc = setupPeerConnection(currentSessionId, isInitiator, currentStream);
+
       const wsUrl = getWsUrl(
         `/api/ws/session?token=${encodeURIComponent(token)}&sessionId=${encodeURIComponent(
           currentSessionId
-        )}`
+        )}&clientId=${encodeURIComponent(clientIdRef.current)}`
       );
 
       const sigWs = new WebSocket(wsUrl);
       signalingWsRef.current = sigWs;
 
       sigWs.onopen = () => {
-        setupPeerConnection(currentSessionId, isInitiator, currentStream, sigWs);
+        if (isInitiator) {
+          pc.createOffer()
+            .then((offer) => pc.setLocalDescription(offer))
+            .then(() => {
+              if (pc.localDescription?.sdp && sigWs.readyState === WebSocket.OPEN) {
+                const offerMsg: ClientMessage = {
+                  type: 'signal.offer',
+                  sessionId: currentSessionId,
+                  sdp: pc.localDescription.sdp,
+                };
+                sigWs.send(JSON.stringify(offerMsg));
+              }
+            })
+            .catch((err) => console.error('Error creating offer:', err));
+        }
       };
 
       sigWs.onmessage = async (event) => {
@@ -458,9 +502,6 @@ export function useWebRTC(token: string | null, userId: string | null) {
             return;
           }
 
-          const pc = pcRef.current;
-          if (!pc) return;
-
           switch (msg.type) {
             case 'signal.offer': {
               await pc.setRemoteDescription(
@@ -469,7 +510,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
               // Flush any early arriving ICE candidates
               while (pendingIceCandidatesRef.current.length > 0) {
                 const cand = pendingIceCandidatesRef.current.shift();
-                if (cand) {
+                if (cand?.candidate) {
                   await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
                 }
               }
@@ -493,7 +534,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
               // Flush any early arriving ICE candidates
               while (pendingIceCandidatesRef.current.length > 0) {
                 const cand = pendingIceCandidatesRef.current.shift();
-                if (cand) {
+                if (cand?.candidate) {
                   await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
                 }
               }
@@ -502,10 +543,12 @@ export function useWebRTC(token: string | null, userId: string | null) {
 
             case 'signal.ice': {
               const cand: IceCandidatePayload = msg.candidate;
-              if (pc.remoteDescription?.type) {
-                await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
-              } else {
-                pendingIceCandidatesRef.current.push(cand);
+              if (cand?.candidate) {
+                if (pc.remoteDescription?.type) {
+                  await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+                } else {
+                  pendingIceCandidatesRef.current.push(cand);
+                }
               }
               break;
             }
@@ -533,10 +576,21 @@ export function useWebRTC(token: string | null, userId: string | null) {
     }
 
     cleanupCall();
+    if (matchWsRef.current) {
+      try {
+        matchWsRef.current.close();
+      } catch {}
+      matchWsRef.current = null;
+    }
+
     setCallState('queued');
     setStatusMessage('Searching for someone to chat with...');
 
-    const wsUrl = getWsUrl(`/api/ws/match?token=${encodeURIComponent(token)}`);
+    const wsUrl = getWsUrl(
+      `/api/ws/match?token=${encodeURIComponent(token)}&clientId=${encodeURIComponent(
+        clientIdRef.current
+      )}`
+    );
 
     const ws = new WebSocket(wsUrl);
     matchWsRef.current = ws;
@@ -564,9 +618,23 @@ export function useWebRTC(token: string | null, userId: string | null) {
       }
     };
 
+    ws.onclose = () => {
+      if (callStateRef.current === 'queued') {
+        setTimeout(() => {
+          if (callStateRef.current === 'queued') {
+            findStranger();
+          }
+        }, 1500);
+      }
+    };
+
     ws.onerror = () => {
-      setStatusMessage('Failed to connect to matchmaking server');
-      setCallState('preview');
+      if (callStateRef.current === 'queued') {
+        setStatusMessage('Reconnecting to matchmaking queue...');
+      } else {
+        setStatusMessage('Failed to connect to matchmaking server');
+        setCallState('preview');
+      }
     };
   }, [token, localStream, startPreview, cleanupCall, connectToSignaling]);
 

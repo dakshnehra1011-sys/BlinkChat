@@ -92,6 +92,7 @@ export class MatchmakerDO {
           }
           case 'heartbeat': {
             this.sendMessage(ws, { type: 'heartbeat_ack' });
+            this.tryMatch();
             break;
           }
         }
