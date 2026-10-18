@@ -29,31 +29,37 @@ app.route('/api/auth', authRoutes);
 app.route('/api/reports', reportRoutes);
 
 // Return ICE server configuration (STUN + optional custom TURN)
-app.get('/api/config/ice', (c) => {
-  const stunList = (
-    c.env.STUN_SERVERS ||
-    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:stun2.l.google.com:19302,stun:stun3.l.google.com:19302,stun:stun4.l.google.com:19302,stun:stun.cloudflare.com:3478'
-  )
+app.get('/api/config/ice', async (c) => {
+  const defaultStuns =
+    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:stun2.l.google.com:19302,stun:stun3.l.google.com:19302,stun:stun4.l.google.com:19302,stun:stun.cloudflare.com:3478';
+
+  const stunList = (c.env.STUN_SERVERS ? `${c.env.STUN_SERVERS},${defaultStuns}` : defaultStuns)
     .split(',')
-    .map((url) => ({ urls: url.trim() }));
+    .map((url) => url.trim())
+    .filter(Boolean)
+    .filter((url, index, self) => self.indexOf(url) === index)
+    .map((url) => ({ urls: url }));
 
-  const iceServers: RTCIceServer[] = [
-    ...stunList,
-    // Active Metered Standard Relay TURN servers (Symmetric NAT / 4G / 5G / corporate Wi-Fi fallback)
-    {
-      urls: [
-        'turn:standard.relay.metered.ca:80',
-        'turn:standard.relay.metered.ca:443',
-        'turn:standard.relay.metered.ca:80?transport=tcp',
-        'turn:standard.relay.metered.ca:443?transport=tcp',
-        'turn:relay.metered.ca:80',
-        'turn:relay.metered.ca:80?transport=tcp',
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-  ];
+  const iceServers: RTCIceServer[] = [...stunList];
 
+  // Dynamic Metered TURN credentials integration if configured in worker environment
+  if (c.env.METERED_DOMAIN && c.env.METERED_API_KEY) {
+    try {
+      const res = await fetch(
+        `https://${c.env.METERED_DOMAIN}.metered.live/api/v1/turn/credentials?apiKey=${c.env.METERED_API_KEY}`
+      );
+      if (res.ok) {
+        const meteredServers = (await res.json()) as RTCIceServer[];
+        if (Array.isArray(meteredServers)) {
+          iceServers.push(...meteredServers);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch dynamic Metered credentials:', err);
+    }
+  }
+
+  // Custom static TURN credentials (e.g. Coturn, Cloudflare Calls, Twilio)
   if (c.env.TURN_URLS && c.env.TURN_USERNAME && c.env.TURN_CREDENTIAL) {
     iceServers.push({
       urls: c.env.TURN_URLS.split(',').map((u) => u.trim()),

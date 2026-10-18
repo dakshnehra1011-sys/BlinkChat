@@ -129,7 +129,7 @@ export const InCallView: FC<InCallViewProps> = ({
         remoteVideoRef.current.srcObject = null;
       }
     }
-  }, [remoteStream]);
+  }, [remoteStream, callState]);
 
   useEffect(() => {
     if (localVideoRef.current) {
@@ -278,10 +278,15 @@ export const InCallView: FC<InCallViewProps> = ({
               playsInline
               className="remote-video"
               style={{
-                display: callState === 'connected' && remoteStream ? 'block' : 'none',
+                display:
+                  callState === 'connected' ||
+                  (Boolean(remoteStream) && (remoteStream?.getVideoTracks()?.length ?? 0) > 0)
+                    ? 'block'
+                    : 'none',
               }}
             />
-            {callState !== 'connected' && (
+            {callState !== 'connected' &&
+              (!remoteStream || (remoteStream?.getVideoTracks()?.length ?? 0) === 0) && (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
                 <div
                   style={{

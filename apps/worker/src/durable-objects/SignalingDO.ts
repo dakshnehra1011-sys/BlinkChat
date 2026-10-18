@@ -230,7 +230,7 @@ export class SignalingDO {
 
   sendMessage(ws: WebSocket, msg: ServerMessage): boolean {
     try {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === 0) {
+      if (ws.readyState === 1 || ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(msg));
         return true;
       }

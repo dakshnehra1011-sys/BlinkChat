@@ -8,6 +8,8 @@ export interface Env {
   TURN_URLS?: string;
   TURN_USERNAME?: string;
   TURN_CREDENTIAL?: string;
+  METERED_DOMAIN?: string;
+  METERED_API_KEY?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
 }
