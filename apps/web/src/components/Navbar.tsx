@@ -22,48 +22,26 @@ export const Navbar: FC<NavbarProps> = ({
 }) => {
   return (
     <nav className="navbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
-        <button
-          type="button"
-          className="brand"
-          onClick={onNavigateHome}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            padding: 0,
-            cursor: 'pointer',
-            textAlign: 'left',
-            font: 'inherit',
-            color: 'inherit',
-          }}
-          title="Go to Home"
-        >
-          <div className="brand-icon-orb">
-            <Zap size={18} fill="#ffffff" color="#ffffff" />
-          </div>
-          <span>BlinkChat</span>
-        </button>
-
-        <div className="nav-links">
-          <span className="nav-link" onClick={onNavigateHome}>
-            Live Stage
-          </span>
-          <span className="nav-link" onClick={onNavigateHome}>
-            Privacy
-          </span>
-          <span className="nav-link" onClick={onNavigateHome}>
-            Architecture
-          </span>
-          <a
-            href="https://github.com/dakshnehra1011-sys/BlinkChat"
-            target="_blank"
-            rel="noreferrer"
-            className="nav-link"
-          >
-            GitHub
-          </a>
+      <button
+        type="button"
+        className="brand"
+        onClick={onNavigateHome}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          textAlign: 'left',
+          font: 'inherit',
+          color: 'inherit',
+        }}
+        title="Go to Home"
+      >
+        <div className="brand-icon-orb">
+          <Zap size={18} fill="#ffffff" color="#ffffff" />
         </div>
-      </div>
+        <span>BlinkChat</span>
+      </button>
 
       <div className="nav-actions">
         {isDirectConnection !== null && (
