@@ -21,7 +21,7 @@
     "db:migrate:local": "pnpm --filter @blinkchat/worker exec wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "pnpm --filter @blinkchat/worker exec wrangler d1 migrations apply blinkchat_d1 --remote",
     "deploy:worker": "pnpm --filter @blinkchat/worker exec wrangler deploy",
-    "deploy:web": "pnpm --filter @blinkchat/web exec wrangler pages deploy dist --project-name=blinkchat-web",
+    "deploy:web": "pnpm --filter @blinkchat/web exec wrangler pages deploy dist --project-name=blinkchat-web --branch=main",
     "deploy": "pnpm deploy:worker && pnpm deploy:web"
   },
   "devDependencies": {
