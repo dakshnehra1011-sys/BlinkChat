@@ -13,12 +13,12 @@ describe('SignalingDO Two-Peer WebRTC Lifecycle', () => {
 
     // Mock WebSockets
     const createMockWs = (inbox: any[]) => {
-      const listeners: Record<string, Function[]> = {};
+      const listeners: Record<string, ((...args: any[]) => void)[]> = {};
       return {
         readyState: 1, // OPEN
         send: vi.fn((data: string) => inbox.push(JSON.parse(data))),
         close: vi.fn(),
-        addEventListener: (event: string, fn: Function) => {
+        addEventListener: (event: string, fn: (...args: any[]) => void) => {
           listeners[event] = listeners[event] || [];
           listeners[event].push(fn);
         },
@@ -115,12 +115,12 @@ describe('SignalingDO Two-Peer WebRTC Lifecycle', () => {
     const peer2Messages: any[] = [];
 
     const createMockWs = (inbox: any[]) => {
-      const listeners: Record<string, Function[]> = {};
+      const listeners: Record<string, ((...args: any[]) => void)[]> = {};
       return {
         readyState: 1,
         send: vi.fn((data: string) => inbox.push(JSON.parse(data))),
         close: vi.fn(),
-        addEventListener: (event: string, fn: Function) => {
+        addEventListener: (event: string, fn: (...args: any[]) => void) => {
           listeners[event] = listeners[event] || [];
           listeners[event].push(fn);
         },
@@ -156,12 +156,12 @@ describe('SignalingDO Two-Peer WebRTC Lifecycle', () => {
     const peer2Messages: any[] = [];
 
     const createMockWs = (inbox: any[]) => {
-      const listeners: Record<string, Function[]> = {};
+      const listeners: Record<string, ((...args: any[]) => void)[]> = {};
       return {
         readyState: 1,
         send: vi.fn((data: string) => inbox.push(JSON.parse(data))),
         close: vi.fn(),
-        addEventListener: (event: string, fn: Function) => {
+        addEventListener: (event: string, fn: (...args: any[]) => void) => {
           listeners[event] = listeners[event] || [];
           listeners[event].push(fn);
         },
@@ -258,14 +258,14 @@ describe('SignalingDO Two-Peer WebRTC Lifecycle', () => {
     const signaling = new SignalingDO({} as any, {} as any);
     const peer1Messages: any[] = [];
     const peer2Messages: any[] = [];
-    const listeners1: Record<string, Function[]> = {};
+    const listeners1: Record<string, ((...args: any[]) => void)[]> = {};
 
     const ws1 = {
       readyState: 1,
       send: vi.fn((data: string) => peer1Messages.push(JSON.parse(data))),
       close: vi.fn(),
       accept: vi.fn(),
-      addEventListener: (event: string, fn: Function) => {
+      addEventListener: (event: string, fn: (...args: any[]) => void) => {
         listeners1[event] = listeners1[event] || [];
         listeners1[event].push(fn);
       },

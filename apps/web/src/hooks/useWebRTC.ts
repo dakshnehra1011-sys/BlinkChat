@@ -98,18 +98,23 @@ function createFallbackMediaStream(audioTrack?: MediaStreamTrack | null): MediaS
   return stream;
 }
 
-// Ensure RTCIceCandidateInit has valid defined fields (prevents Chrome TypeError when sdpMid/sdpMLineIndex is null)
+// Ensure RTCIceCandidateInit has valid defined fields and valid m-line mapping
 function buildSafeIceCandidate(cand: IceCandidatePayload): RTCIceCandidateInit {
   const init: RTCIceCandidateInit = {
     candidate: cand.candidate,
   };
-  if (cand.sdpMid !== null && cand.sdpMid !== undefined) {
+  if (cand.sdpMid !== null && cand.sdpMid !== undefined && cand.sdpMid !== '') {
     init.sdpMid = cand.sdpMid;
   }
   if (cand.sdpMLineIndex !== null && cand.sdpMLineIndex !== undefined) {
     init.sdpMLineIndex = cand.sdpMLineIndex;
   }
-  if (cand.usernameFragment !== null && cand.usernameFragment !== undefined) {
+  // If neither sdpMid nor sdpMLineIndex is provided, default to index 0 (bundled media line)
+  if (init.sdpMid === undefined && init.sdpMLineIndex === undefined) {
+    init.sdpMLineIndex = 0;
+    init.sdpMid = '0';
+  }
+  if (cand.usernameFragment) {
     init.usernameFragment = cand.usernameFragment;
   }
   return init;
@@ -143,19 +148,6 @@ export function useWebRTC(token: string | null, userId: string | null) {
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
-    { urls: 'stun:openrelay.metered.ca:80' },
-    {
-      urls: [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:80?transport=tcp',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp',
-        'turns:openrelay.metered.ca:443',
-        'turns:openrelay.metered.ca:443?transport=tcp',
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
   ]);
 
   const clientIdRef = useRef<string>(
@@ -262,7 +254,12 @@ export function useWebRTC(token: string | null, userId: string | null) {
     // 1. Try standard ideal HD camera constraints
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' },
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 },
+          facingMode: 'user',
+        },
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       localStreamRef.current = stream;
@@ -271,7 +268,10 @@ export function useWebRTC(token: string | null, userId: string | null) {
       setStatusMessage('Camera and microphone ready');
       return stream;
     } catch (err) {
-      console.warn('Ideal camera constraints failed, attempting basic { video: true, audio: true }:', err);
+      console.warn(
+        'Ideal camera constraints failed, attempting basic { video: true, audio: true }:',
+        err
+      );
       // 2. Try relaxed constraints for budget webcams and mobile devices
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -395,16 +395,11 @@ export function useWebRTC(token: string | null, userId: string | null) {
 
   // Setup WebRTC peer connection
   const setupPeerConnection = useCallback(
-    (
-      currentSessionId: string,
-      isInitiator: boolean,
-      currentStream: MediaStream
-    ) => {
+    (currentSessionId: string, isInitiator: boolean, currentStream: MediaStream) => {
       const pc = new RTCPeerConnection({
         iceServers: iceServersRef.current,
         bundlePolicy: 'max-bundle',
         rtcpMuxPolicy: 'require',
-        iceCandidatePoolSize: 10,
       });
       pcRef.current = pc;
       outboundIceQueueRef.current = [];
@@ -414,6 +409,28 @@ export function useWebRTC(token: string | null, userId: string | null) {
       currentStream.getTracks().forEach((track) => {
         pc.addTrack(track, currentStream);
       });
+
+      const checkConnected = () => {
+        if (
+          pc.connectionState === 'connected' ||
+          pc.iceConnectionState === 'connected' ||
+          pc.iceConnectionState === 'completed' ||
+          dataChannelRef.current?.readyState === 'open' ||
+          remoteStreamRef.current.getVideoTracks().length > 0
+        ) {
+          setCallState('connected');
+          setStatusMessage('Connected with stranger');
+          pc.getStats().then((stats) => {
+            stats.forEach((report) => {
+              if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                const localCandidate = stats.get(report.localCandidateId);
+                const isRelay = localCandidate?.candidateType === 'relay';
+                setIsDirectConnection(!isRelay);
+              }
+            });
+          }).catch(() => {});
+        }
+      };
 
       // Handle remote tracks with guaranteed fresh MediaStream instance for React
       pc.ontrack = (event) => {
@@ -434,10 +451,12 @@ export function useWebRTC(token: string | null, userId: string | null) {
         // Always create a fresh MediaStream instance so React updates state & re-renders video
         const freshStream = new MediaStream(remoteStreamRef.current.getTracks());
         setRemoteStream(freshStream);
+        checkConnected();
 
         event.track.onunmute = () => {
           console.log('[WebRTC] Remote track unmuted:', event.track.kind);
           setRemoteStream(new MediaStream(remoteStreamRef.current.getTracks()));
+          checkConnected();
         };
       };
 
@@ -449,8 +468,8 @@ export function useWebRTC(token: string | null, userId: string | null) {
             sessionId: currentSessionId,
             candidate: {
               candidate: event.candidate.candidate,
-              sdpMid: event.candidate.sdpMid ?? undefined,
-              sdpMLineIndex: event.candidate.sdpMLineIndex ?? undefined,
+              sdpMid: event.candidate.sdpMid ?? '0',
+              sdpMLineIndex: event.candidate.sdpMLineIndex ?? 0,
               usernameFragment: event.candidate.usernameFragment ?? undefined,
             },
           };
@@ -459,26 +478,6 @@ export function useWebRTC(token: string | null, userId: string | null) {
           } else {
             outboundIceQueueRef.current.push(payload);
           }
-        }
-      };
-
-      const checkConnected = () => {
-        if (
-          pc.connectionState === 'connected' ||
-          pc.iceConnectionState === 'connected' ||
-          pc.iceConnectionState === 'completed'
-        ) {
-          setCallState('connected');
-          setStatusMessage('Connected with stranger');
-          pc.getStats().then((stats) => {
-            stats.forEach((report) => {
-              if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                const localCandidate = stats.get(report.localCandidateId);
-                const isRelay = localCandidate?.candidateType === 'relay';
-                setIsDirectConnection(!isRelay);
-              }
-            });
-          });
         }
       };
 
@@ -503,13 +502,16 @@ export function useWebRTC(token: string | null, userId: string | null) {
         dataChannelRef.current = dc;
         dc.onopen = () => {
           console.log('[WebRTC] RTCDataChannel opened successfully');
+          checkConnected();
         };
         dc.onclose = () => {
           console.log('[WebRTC] RTCDataChannel closed');
           // Only trigger leave if we were actually connected and the peer connection has failed or closed
           if (
             callStateRef.current === 'connected' &&
-            (pc.connectionState === 'closed' || pc.connectionState === 'failed' || pc.connectionState === 'disconnected')
+            (pc.connectionState === 'closed' ||
+              pc.connectionState === 'failed' ||
+              pc.connectionState === 'disconnected')
           ) {
             handleRemotePeerLeave('Stranger disconnected');
           }
@@ -706,7 +708,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
     if (!token) return;
 
     let stream = localStreamRef.current || localStream;
-    const hasLiveVideo = stream && stream.getVideoTracks().some((t) => t.readyState === 'live');
+    const hasLiveVideo = stream?.getVideoTracks().some((t) => t.readyState === 'live');
     if (!stream || !hasLiveVideo) {
       stream = await startPreview();
       if (!stream) return;

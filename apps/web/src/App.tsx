@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { AuthModal } from './components/AuthModal.js';
-import { InCallView } from './components/InCallView.js';
-import { LandingView } from './components/LandingView.js';
-import { Navbar } from './components/Navbar.js';
-import { PreviewStage } from './components/PreviewStage.js';
-import { ReportModal } from './components/ReportModal.js';
-import { useWebRTC } from './hooks/useWebRTC.js';
+import { AuthModal } from './components/AuthModal';
+import { InCallView } from './components/InCallView';
+import { LandingView } from './components/LandingView';
+import { Navbar } from './components/Navbar';
+import { PreviewStage } from './components/PreviewStage';
+import { ReportModal } from './components/ReportModal';
+import { useWebRTC } from './hooks/useWebRTC';
 import './styles/theme.css';
 
 import { getApiUrl } from './lib/api';

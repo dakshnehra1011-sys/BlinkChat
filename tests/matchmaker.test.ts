@@ -71,14 +71,14 @@ describe('MatchmakerDO Queue Logic', () => {
     const matchmaker = new MatchmakerDO(mockState, mockEnv);
 
     const inbox1: any[] = [];
-    const listeners1: Record<string, Function[]> = {};
+    const listeners1: Record<string, ((...args: any[]) => void)[]> = {};
 
     const ws1 = {
       readyState: 1,
       send: vi.fn((data: string) => inbox1.push(JSON.parse(data))),
       close: vi.fn(),
       accept: vi.fn(),
-      addEventListener: (event: string, fn: Function) => {
+      addEventListener: (event: string, fn: (...args: any[]) => void) => {
         listeners1[event] = listeners1[event] || [];
         listeners1[event].push(fn);
       },

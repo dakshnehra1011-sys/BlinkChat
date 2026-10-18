@@ -1,7 +1,7 @@
 import { ArrowLeft, Loader2, Mic, MicOff, Search, Sparkles, Video, VideoOff } from 'lucide-react';
 import type { FC } from 'react';
 import { useEffect, useRef } from 'react';
-import type { CallState } from '../hooks/useWebRTC.js';
+import type { CallState } from '../hooks/useWebRTC';
 
 interface PreviewStageProps {
   callState: CallState;

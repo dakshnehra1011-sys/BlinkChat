@@ -28,31 +28,16 @@ app.get('/health', (c) => c.json({ status: 'ok', service: 'BlinkChat Edge Worker
 app.route('/api/auth', authRoutes);
 app.route('/api/reports', reportRoutes);
 
-// Return ICE server configuration (STUN + OpenRelay TURN + optional custom TURN)
+// Return ICE server configuration (STUN + optional custom TURN)
 app.get('/api/config/ice', (c) => {
   const stunList = (
     c.env.STUN_SERVERS ||
-    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:stun2.l.google.com:19302,stun:stun3.l.google.com:19302,stun:stun4.l.google.com:19302,stun:stun.cloudflare.com:3478,stun:openrelay.metered.ca:80'
+    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:stun2.l.google.com:19302,stun:stun3.l.google.com:19302,stun:stun4.l.google.com:19302,stun:stun.cloudflare.com:3478'
   )
     .split(',')
     .map((url) => ({ urls: url.trim() }));
 
-  const iceServers: RTCIceServer[] = [
-    ...stunList,
-    // Free public TURN servers for NAT traversal (symmetric NAT / 4G / 5G / corporate Wi-Fi / WAN)
-    {
-      urls: [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:80?transport=tcp',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp',
-        'turns:openrelay.metered.ca:443',
-        'turns:openrelay.metered.ca:443?transport=tcp',
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-    },
-  ];
+  const iceServers: RTCIceServer[] = [...stunList];
 
   if (c.env.TURN_URLS && c.env.TURN_USERNAME && c.env.TURN_CREDENTIAL) {
     iceServers.push({

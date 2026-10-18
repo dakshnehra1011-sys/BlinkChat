@@ -28,7 +28,7 @@ WebPlateform/
 │   ├── shared/                  # Shared Zod schemas, protocol events, and TypeScript interfaces
 │   └── database/                # Drizzle ORM schema, SQL migrations for Cloudflare D1
 ├── tests/                       # Vitest test suite for protocol, crypto, and queue invariants
-├── docs/                        # Architecture, deployment guide, and reverse-engineering evidence
+├── docs/                        # Architecture, deployment guide, and tooling specifications
 └── pnpm-workspace.yaml
 ```
 
@@ -82,7 +82,7 @@ pnpm build
 ## 📖 Documentation
 
 - [System Architecture](docs/ARCHITECTURE.md)
+- [Master Tech Stack Guide](TECH_STACK_AND_ARCHITECTURE.md)
 - [Deployment & Cost Model](docs/DEPLOYMENT.md)
 - [Agent Guidelines (AGENTS.md)](AGENTS.md)
 - [Workspace & Tooling Audit](docs/WORKSPACE_AUDIT.md)
-- [Reference Reverse Engineering (REA)](docs/reverse-engineering/REFERENCE_INVENTORY.md)

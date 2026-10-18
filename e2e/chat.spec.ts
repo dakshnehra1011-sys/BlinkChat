@@ -7,15 +7,15 @@ test.describe('BlinkChat E2E Suite', () => {
     // Check branding
     await expect(page.locator('text=BlinkChat')).toBeVisible();
 
-    // Check Start Chatting button
-    const startBtn = page.getByRole('button', { name: /start chatting/i });
+    // Check Start Video Chat button
+    const startBtn = page.getByRole('button', { name: /start video chat/i });
     await expect(startBtn).toBeVisible();
   });
 
-  test('opens auth modal when clicking Start Chatting', async ({ page }) => {
+  test('opens auth modal when clicking Start Video Chat', async ({ page }) => {
     await page.goto('/');
 
-    const startBtn = page.getByRole('button', { name: /start chatting/i });
+    const startBtn = page.getByRole('button', { name: /start video chat/i });
     await startBtn.click();
 
     // Modal should appear with Sign In / Create Account

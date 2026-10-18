@@ -17,7 +17,7 @@ import {
 import type { FC, FormEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import 'emoji-picker-element';
-import type { CallState, ChatMessage } from '../hooks/useWebRTC.js';
+import type { CallState, ChatMessage } from '../hooks/useWebRTC';
 
 interface InCallViewProps {
   callState: CallState;
@@ -278,10 +278,14 @@ export const InCallView: FC<InCallViewProps> = ({
               playsInline
               className="remote-video"
               style={{
-                display: remoteStream && callState === 'connected' ? 'block' : 'none',
+                display:
+                  remoteStream && (callState === 'connected' || remoteStream.getVideoTracks().length > 0)
+                    ? 'block'
+                    : 'none',
               }}
             />
-            {(!remoteStream || callState !== 'connected') && (
+            {(!remoteStream ||
+              (callState !== 'connected' && remoteStream.getVideoTracks().length === 0)) && (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
                 <div
                   style={{
@@ -301,7 +305,13 @@ export const InCallView: FC<InCallViewProps> = ({
                 <p style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f8fafc' }}>
                   {statusMessage || 'Connecting to stranger...'}
                 </p>
-                <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                <p
+                  style={{
+                    fontSize: '0.88rem',
+                    color: 'var(--text-secondary)',
+                    marginTop: '0.5rem',
+                  }}
+                >
                   Direct browser-to-browser WebRTC handshake in progress
                 </p>
               </div>
@@ -311,7 +321,13 @@ export const InCallView: FC<InCallViewProps> = ({
 
         {/* Floating Local Picture-in-Picture Card */}
         <div className="local-video-card" style={{ opacity: isVideoDisabled ? 0.6 : 1 }}>
-          <video ref={setLocalVideoRef} autoPlay playsInline muted className="local-video-preview" />
+          <video
+            ref={setLocalVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="local-video-preview"
+          />
           <div className="local-video-tag">
             <span className="live-dot" style={{ width: 6, height: 6 }} />
             <span>You</span>
