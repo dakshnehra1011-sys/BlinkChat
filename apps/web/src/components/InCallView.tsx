@@ -59,6 +59,7 @@ export const InCallView: FC<InCallViewProps> = ({
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLElement | null>(null);
 
@@ -82,10 +83,17 @@ export const InCallView: FC<InCallViewProps> = ({
     }
   }, [remoteStream]);
 
-  // Auto-scroll chat on new messages
+  // Auto-scroll chat to latest message
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   // Keyboard navigation: Escape closes emoji popover if open, or triggers Next Stranger
   useEffect(() => {
@@ -341,7 +349,7 @@ export const InCallView: FC<InCallViewProps> = ({
             </div>
           </div>
 
-          <div className="chat-messages">
+          <div className="chat-messages" ref={chatContainerRef}>
             {messages.length === 0 ? (
               <div
                 style={{

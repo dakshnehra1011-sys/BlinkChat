@@ -105,7 +105,16 @@ export function App() {
         onLogout={handleLogout}
       />
 
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <main
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: !user || viewMode === 'home' ? 'auto' : 'hidden',
+          position: 'relative',
+        }}
+      >
         {!user || viewMode === 'home' ? (
           <LandingView
             isLoggedIn={!!user}
