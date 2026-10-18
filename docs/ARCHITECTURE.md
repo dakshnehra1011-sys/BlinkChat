@@ -1,5 +1,7 @@
 # BlinkChat System Architecture
 
+> 📘 **Detailed Guide**: For an exhaustive deep-dive explaining why every technology was selected, connectivity blueprints, and step-by-step functional workflows, see [TECH_STACK_AND_ARCHITECTURE.md](../TECH_STACK_AND_ARCHITECTURE.md).
+
 ## Overview
 
 BlinkChat is an ultra-low latency peer-to-peer random video chat application engineered for high concurrency, security, and edge performance.
