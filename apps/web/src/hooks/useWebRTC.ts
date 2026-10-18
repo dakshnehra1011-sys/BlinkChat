@@ -98,6 +98,23 @@ function createFallbackMediaStream(audioTrack?: MediaStreamTrack | null): MediaS
   return stream;
 }
 
+// Ensure RTCIceCandidateInit has valid defined fields (prevents Chrome TypeError when sdpMid/sdpMLineIndex is null)
+function buildSafeIceCandidate(cand: IceCandidatePayload): RTCIceCandidateInit {
+  const init: RTCIceCandidateInit = {
+    candidate: cand.candidate,
+  };
+  if (cand.sdpMid !== null && cand.sdpMid !== undefined) {
+    init.sdpMid = cand.sdpMid;
+  }
+  if (cand.sdpMLineIndex !== null && cand.sdpMLineIndex !== undefined) {
+    init.sdpMLineIndex = cand.sdpMLineIndex;
+  }
+  if (cand.usernameFragment !== null && cand.usernameFragment !== undefined) {
+    init.usernameFragment = cand.usernameFragment;
+  }
+  return init;
+}
+
 export function useWebRTC(token: string | null, userId: string | null) {
   const [callState, setCallState] = useState<CallState>('idle');
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
@@ -122,11 +139,18 @@ export function useWebRTC(token: string | null, userId: string | null) {
   const iceServersRef = useRef<RTCIceServer[]>([
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:openrelay.metered.ca:80' },
     {
       urls: [
         'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:80?transport=tcp',
         'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+        'turns:openrelay.metered.ca:443',
         'turns:openrelay.metered.ca:443?transport=tcp',
       ],
       username: 'openrelayproject',
@@ -167,6 +191,19 @@ export function useWebRTC(token: string | null, userId: string | null) {
         matchWsRef.current.send(JSON.stringify({ type: 'heartbeat' }));
       }
     }, 8000);
+
+    return () => clearInterval(interval);
+  }, [callState]);
+
+  // Proactive heartbeat keepalive while in call to prevent Cloudflare edge WebSocket idle timeout
+  useEffect(() => {
+    if (callState !== 'connecting' && callState !== 'connected') return;
+
+    const interval = setInterval(() => {
+      if (signalingWsRef.current?.readyState === WebSocket.OPEN) {
+        signalingWsRef.current.send(JSON.stringify({ type: 'heartbeat' }));
+      }
+    }, 12000);
 
     return () => clearInterval(interval);
   }, [callState]);
@@ -363,7 +400,12 @@ export function useWebRTC(token: string | null, userId: string | null) {
       isInitiator: boolean,
       currentStream: MediaStream
     ) => {
-      const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
+      const pc = new RTCPeerConnection({
+        iceServers: iceServersRef.current,
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+        iceCandidatePoolSize: 10,
+      });
       pcRef.current = pc;
       outboundIceQueueRef.current = [];
       remoteStreamRef.current = new MediaStream();
@@ -407,9 +449,9 @@ export function useWebRTC(token: string | null, userId: string | null) {
             sessionId: currentSessionId,
             candidate: {
               candidate: event.candidate.candidate,
-              sdpMid: event.candidate.sdpMid,
-              sdpMLineIndex: event.candidate.sdpMLineIndex,
-              usernameFragment: event.candidate.usernameFragment,
+              sdpMid: event.candidate.sdpMid ?? undefined,
+              sdpMLineIndex: event.candidate.sdpMLineIndex ?? undefined,
+              usernameFragment: event.candidate.usernameFragment ?? undefined,
             },
           };
           if (signalingWsRef.current?.readyState === WebSocket.OPEN) {
@@ -464,7 +506,13 @@ export function useWebRTC(token: string | null, userId: string | null) {
         };
         dc.onclose = () => {
           console.log('[WebRTC] RTCDataChannel closed');
-          handleRemotePeerLeave('Stranger disconnected');
+          // Only trigger leave if we were actually connected and the peer connection has failed or closed
+          if (
+            callStateRef.current === 'connected' &&
+            (pc.connectionState === 'closed' || pc.connectionState === 'failed' || pc.connectionState === 'disconnected')
+          ) {
+            handleRemotePeerLeave('Stranger disconnected');
+          }
         };
         dc.onerror = (err) => {
           console.warn('[WebRTC] RTCDataChannel error:', err);
@@ -573,7 +621,11 @@ export function useWebRTC(token: string | null, userId: string | null) {
               while (pendingIceCandidatesRef.current.length > 0) {
                 const cand = pendingIceCandidatesRef.current.shift();
                 if (cand?.candidate) {
-                  await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+                  try {
+                    await pc.addIceCandidate(buildSafeIceCandidate(cand));
+                  } catch (e) {
+                    console.warn('[WebRTC] addIceCandidate error:', e);
+                  }
                 }
               }
               const answer = await pc.createAnswer();
@@ -604,7 +656,11 @@ export function useWebRTC(token: string | null, userId: string | null) {
               while (pendingIceCandidatesRef.current.length > 0) {
                 const cand = pendingIceCandidatesRef.current.shift();
                 if (cand?.candidate) {
-                  await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+                  try {
+                    await pc.addIceCandidate(buildSafeIceCandidate(cand));
+                  } catch (e) {
+                    console.warn('[WebRTC] addIceCandidate error:', e);
+                  }
                 }
               }
               // Flush any queued outbound ICE candidates
@@ -621,7 +677,11 @@ export function useWebRTC(token: string | null, userId: string | null) {
               const cand: IceCandidatePayload = msg.candidate;
               if (cand?.candidate) {
                 if (pc.remoteDescription?.type) {
-                  await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(() => {});
+                  try {
+                    await pc.addIceCandidate(buildSafeIceCandidate(cand));
+                  } catch (e) {
+                    console.warn('[WebRTC] addIceCandidate error:', e);
+                  }
                 } else {
                   pendingIceCandidatesRef.current.push(cand);
                 }

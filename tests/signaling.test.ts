@@ -288,6 +288,10 @@ describe('SignalingDO Two-Peer WebRTC Lifecycle', () => {
       true
     );
 
+    // Heartbeat keepalive
+    listeners1.message?.forEach((fn) => fn({ data: JSON.stringify({ type: 'heartbeat' }) }));
+    expect(peer1Messages.some((m) => m.type === 'heartbeat_ack')).toBe(true);
+
     // match.leave
     listeners1.message?.forEach((fn) =>
       fn({ data: JSON.stringify({ type: 'match.leave', sessionId: 's1' }) })

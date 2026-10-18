@@ -169,6 +169,11 @@ export class SignalingDO {
             this.teardownSession();
             break;
           }
+
+          case 'heartbeat': {
+            this.sendMessage(ws, { type: 'heartbeat_ack' });
+            break;
+          }
         }
       } catch (err) {
         console.error('Signaling error:', err);

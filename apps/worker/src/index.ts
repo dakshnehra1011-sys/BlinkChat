@@ -32,18 +32,21 @@ app.route('/api/reports', reportRoutes);
 app.get('/api/config/ice', (c) => {
   const stunList = (
     c.env.STUN_SERVERS ||
-    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:openrelay.metered.ca:80'
+    'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:stun2.l.google.com:19302,stun:stun3.l.google.com:19302,stun:stun4.l.google.com:19302,stun:stun.cloudflare.com:3478,stun:openrelay.metered.ca:80'
   )
     .split(',')
     .map((url) => ({ urls: url.trim() }));
 
   const iceServers: RTCIceServer[] = [
     ...stunList,
-    // Free public TURN servers for NAT traversal (symmetric NAT / 4G / 5G / corporate Wi-Fi)
+    // Free public TURN servers for NAT traversal (symmetric NAT / 4G / 5G / corporate Wi-Fi / WAN)
     {
       urls: [
         'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:80?transport=tcp',
         'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+        'turns:openrelay.metered.ca:443',
         'turns:openrelay.metered.ca:443?transport=tcp',
       ],
       username: 'openrelayproject',
