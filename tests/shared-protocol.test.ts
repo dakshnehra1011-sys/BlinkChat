@@ -121,5 +121,11 @@ describe('Shared Protocol & Schema Suite', () => {
       };
       expect(dataChannelMessageSchema.safeParse(empty).success).toBe(false);
     });
+
+    it('parses peer.leave signal message', () => {
+      const leave = { type: 'peer.leave' };
+      const res = dataChannelMessageSchema.safeParse(leave);
+      expect(res.success).toBe(true);
+    });
   });
 });

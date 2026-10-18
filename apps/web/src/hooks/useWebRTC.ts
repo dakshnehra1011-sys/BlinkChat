@@ -114,6 +114,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
   const signalingWsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
   const pendingIceCandidatesRef = useRef<IceCandidatePayload[]>([]);
   const iceServersRef = useRef<RTCIceServer[]>([
     { urls: 'stun:stun.l.google.com:19302' },
@@ -142,6 +143,35 @@ export function useWebRTC(token: string | null, userId: string | null) {
       iceServersRef.current = iceConfig.iceServers;
     }
   }, [iceConfig]);
+
+  // Handle remote peer disconnection or departure
+  const handleRemotePeerLeave = useCallback((reason: string) => {
+    if (dataChannelRef.current) {
+      try {
+        dataChannelRef.current.close();
+      } catch {}
+      dataChannelRef.current = null;
+    }
+    if (pcRef.current) {
+      try {
+        pcRef.current.close();
+      } catch {}
+      pcRef.current = null;
+    }
+    if (signalingWsRef.current) {
+      try {
+        signalingWsRef.current.close();
+      } catch {}
+      signalingWsRef.current = null;
+    }
+    sessionIdRef.current = null;
+    setRemoteStream(null);
+    setSessionId(null);
+    setPeerId(null);
+    setIsDirectConnection(null);
+    setCallState('ended');
+    setStatusMessage(reason);
+  }, []);
 
   // Initialize local camera and microphone preview (with automatic fallback if hardware is busy)
   const startPreview = useCallback(async () => {
@@ -182,20 +212,40 @@ export function useWebRTC(token: string | null, userId: string | null) {
     }
   }, []);
 
-  // Cleanup peer connection and signaling
+  // Cleanup peer connection and signaling with graceful peer departure notifications
   const cleanupCall = useCallback(() => {
+    // Notify peer over WebRTC data channel if open
+    if (dataChannelRef.current?.readyState === 'open') {
+      try {
+        dataChannelRef.current.send(JSON.stringify({ type: 'peer.leave' }));
+      } catch {}
+    }
+    // Notify signaling Durable Object if connected
+    if (sessionIdRef.current && signalingWsRef.current?.readyState === WebSocket.OPEN) {
+      try {
+        const leaveMsg: ClientMessage = { type: 'match.leave', sessionId: sessionIdRef.current };
+        signalingWsRef.current.send(JSON.stringify(leaveMsg));
+      } catch {}
+    }
     if (dataChannelRef.current) {
-      dataChannelRef.current.close();
+      try {
+        dataChannelRef.current.close();
+      } catch {}
       dataChannelRef.current = null;
     }
     if (pcRef.current) {
-      pcRef.current.close();
+      try {
+        pcRef.current.close();
+      } catch {}
       pcRef.current = null;
     }
     if (signalingWsRef.current) {
-      signalingWsRef.current.close();
+      try {
+        signalingWsRef.current.close();
+      } catch {}
       signalingWsRef.current = null;
     }
+    sessionIdRef.current = null;
     setRemoteStream(null);
     setSessionId(null);
     setPeerId(null);
@@ -294,12 +344,23 @@ export function useWebRTC(token: string | null, userId: string | null) {
               }
             });
           });
-        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-          setStatusMessage('Connection lost');
+        } else if (
+          pc.connectionState === 'failed' ||
+          pc.connectionState === 'disconnected' ||
+          pc.connectionState === 'closed'
+        ) {
+          handleRemotePeerLeave('Stranger left the call');
         }
       };
 
-      // Setup DataChannel for text & emoji chat
+      // ICE connection state changes
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+          handleRemotePeerLeave('Stranger disconnected');
+        }
+      };
+
+      // Setup DataChannel for text, emoji chat, and instant peer departure events
       const setupDataChannelEvents = (dc: RTCDataChannel) => {
         dataChannelRef.current = dc;
         dc.onopen = () => {
@@ -307,6 +368,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
         };
         dc.onclose = () => {
           console.log('[WebRTC] RTCDataChannel closed');
+          handleRemotePeerLeave('Stranger disconnected');
         };
         dc.onerror = (err) => {
           console.warn('[WebRTC] RTCDataChannel error:', err);
@@ -314,6 +376,10 @@ export function useWebRTC(token: string | null, userId: string | null) {
         dc.onmessage = (event) => {
           try {
             const data: DataChannelMessage = JSON.parse(event.data);
+            if (data.type === 'peer.leave') {
+              handleRemotePeerLeave('Stranger left the call');
+              return;
+            }
             if (data.type === 'chat.message') {
               setMessages((prev) => [
                 ...prev,
@@ -360,7 +426,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
 
       return pc;
     },
-    []
+    [handleRemotePeerLeave]
   );
 
   // Connect to SignalingDO for an active match session
@@ -386,6 +452,12 @@ export function useWebRTC(token: string | null, userId: string | null) {
       sigWs.onmessage = async (event) => {
         try {
           const msg: ServerMessage = JSON.parse(event.data);
+
+          if (msg.type === 'match.ended') {
+            handleRemotePeerLeave(msg.message || 'Stranger ended the chat');
+            return;
+          }
+
           const pc = pcRef.current;
           if (!pc) return;
 
@@ -437,13 +509,6 @@ export function useWebRTC(token: string | null, userId: string | null) {
               }
               break;
             }
-
-            case 'match.ended': {
-              setStatusMessage(msg.message || 'Stranger ended the chat');
-              cleanupCall();
-              setCallState('ended');
-              break;
-            }
           }
         } catch (err) {
           console.error('Error in signaling message handler:', err);
@@ -454,7 +519,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
         setStatusMessage('Signaling error');
       };
     },
-    [token, setupPeerConnection, cleanupCall]
+    [token, setupPeerConnection, handleRemotePeerLeave]
   );
 
   // Join matchmaking queue via MatchmakerDO
@@ -486,6 +551,7 @@ export function useWebRTC(token: string | null, userId: string | null) {
         const msg: ServerMessage = JSON.parse(event.data);
         if (msg.type === 'match.found') {
           setSessionId(msg.sessionId);
+          sessionIdRef.current = msg.sessionId;
           setPeerId(msg.peerId);
           setCallState('connecting');
           setStatusMessage('Stranger found! Establishing video...');
@@ -566,9 +632,29 @@ export function useWebRTC(token: string | null, userId: string | null) {
     }
   }, [localStream]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount & browser navigation
   useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (dataChannelRef.current?.readyState === 'open') {
+        try {
+          dataChannelRef.current.send(JSON.stringify({ type: 'peer.leave' }));
+        } catch {}
+      }
+      if (sessionIdRef.current && signalingWsRef.current?.readyState === WebSocket.OPEN) {
+        try {
+          signalingWsRef.current.send(
+            JSON.stringify({ type: 'match.leave', sessionId: sessionIdRef.current })
+          );
+        } catch {}
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
+
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
       if (localStream) {
         localStream.getTracks().forEach((t) => t.stop());
       }

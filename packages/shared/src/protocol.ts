@@ -116,6 +116,9 @@ export const dataChannelMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('chat.typing'),
     isTyping: z.boolean(),
   }),
+  z.object({
+    type: z.literal('peer.leave'),
+  }),
 ]);
 
 export type DataChannelMessage = z.infer<typeof dataChannelMessageSchema>;

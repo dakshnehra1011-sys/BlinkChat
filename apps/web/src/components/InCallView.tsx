@@ -36,6 +36,7 @@ interface InCallViewProps {
 }
 
 export const InCallView: FC<InCallViewProps> = ({
+  callState,
   localStream,
   remoteStream,
   isAudioMuted,
@@ -69,11 +70,15 @@ export const InCallView: FC<InCallViewProps> = ({
     }
   }, [localStream]);
 
-  // Attach remote stream
+  // Attach remote stream & properly clear video frame on disconnect
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-      remoteVideoRef.current.play().catch(() => {});
+    if (remoteVideoRef.current) {
+      if (remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(() => {});
+      } else {
+        remoteVideoRef.current.srcObject = null;
+      }
     }
   }, [remoteStream]);
 
@@ -138,11 +143,23 @@ export const InCallView: FC<InCallViewProps> = ({
         {/* Top Video Stage Overlay */}
         <div className="video-stage-topbar">
           <div className="video-stage-pill">
-            <span className="live-dot" />
-            <span>{remoteStream ? 'Stranger Connected' : 'Connecting...'}</span>
+            <span
+              className="live-dot"
+              style={{
+                background: callState === 'ended' ? '#f43f5e' : undefined,
+                boxShadow: callState === 'ended' ? '0 0 10px rgba(244, 63, 94, 0.6)' : undefined,
+              }}
+            />
+            <span>
+              {callState === 'ended'
+                ? 'Stranger Disconnected'
+                : remoteStream
+                  ? 'Stranger Connected'
+                  : 'Connecting...'}
+            </span>
             <span style={{ opacity: 0.5 }}>•</span>
             <span style={{ color: 'var(--text-muted)' }}>
-              {remoteStream ? 'HD 60fps' : 'Negotiating'}
+              {callState === 'ended' ? 'Call Ended' : remoteStream ? 'HD 60fps' : 'Negotiating'}
             </span>
           </div>
 
@@ -157,7 +174,38 @@ export const InCallView: FC<InCallViewProps> = ({
           </button>
         </div>
 
-        {remoteStream ? (
+        {callState === 'ended' ? (
+          <div className="call-ended-card">
+            <div className="call-ended-icon-wrapper">
+              <PhoneOff size={32} color="#f43f5e" />
+            </div>
+            <h2 className="call-ended-title">Stranger Left the Call</h2>
+            <p className="call-ended-desc">
+              {statusMessage || 'The other user disconnected or left the conversation.'}
+            </p>
+            <div className="call-ended-actions">
+              <button
+                type="button"
+                className="btn btn-primary call-ended-btn-primary"
+                onClick={onNextStranger}
+                title="Find next stranger [Esc key]"
+              >
+                <SkipForward size={18} />
+                <span>Find Next Stranger</span>
+                <span className="kbd-shortcut-chip">Esc</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary call-ended-btn-secondary"
+                onClick={onLeaveCall}
+                title="Return to stage"
+              >
+                <ArrowLeft size={16} />
+                <span>Back to Stage</span>
+              </button>
+            </div>
+          </div>
+        ) : remoteStream ? (
           <video ref={remoteVideoRef} autoPlay playsInline className="remote-video" />
         ) : (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
@@ -356,7 +404,15 @@ export const InCallView: FC<InCallViewProps> = ({
               />
               <div className="emoji-picker-container">
                 <div className="emoji-picker-header">
-                  <span>Reactions & Emojis</span>
+                  <button
+                    type="button"
+                    className="emoji-picker-back-btn"
+                    onClick={() => setShowEmojiPicker(false)}
+                    title="Back to Chat (Esc)"
+                  >
+                    <ArrowLeft size={15} />
+                    <span>Back to Chat</span>
+                  </button>
                   <button
                     type="button"
                     className="emoji-picker-close-btn"
@@ -392,17 +448,17 @@ export const InCallView: FC<InCallViewProps> = ({
           <form className="chat-input-area" onSubmit={handleSend}>
             <button
               type="button"
-              className="dock-btn"
+              className={`dock-btn ${showEmojiPicker ? 'dock-btn-active' : ''}`}
               style={{ width: 38, height: 38, flexShrink: 0 }}
               onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              title={showEmojiPicker ? 'Close Emoji Picker' : 'Pick Emoji'}
+              title={showEmojiPicker ? 'Back to Chat' : 'Pick Emoji'}
             >
-              <Smile size={18} />
+              {showEmojiPicker ? <ArrowLeft size={18} /> : <Smile size={18} />}
             </button>
             <input
               type="text"
               className="chat-input"
-              placeholder="Type message..."
+              placeholder={showEmojiPicker ? 'Select emoji or click Back...' : 'Type message...'}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
             />

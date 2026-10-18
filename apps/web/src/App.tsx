@@ -72,6 +72,7 @@ export function App() {
   };
 
   const handleLogout = () => {
+    leaveCall();
     stopCamera();
     setToken(null);
     localStorage.removeItem('blinkchat_token');
@@ -81,6 +82,7 @@ export function App() {
   };
 
   const handleNavigateHome = () => {
+    leaveCall();
     stopCamera();
     setViewMode('home');
   };
