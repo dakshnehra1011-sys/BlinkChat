@@ -53,7 +53,7 @@ export const PreviewStage: FC<PreviewStageProps> = ({
         alignItems: 'center',
         justifyContent: 'center',
         padding: '2rem 1.5rem',
-        background: 'radial-gradient(circle at 50% 20%, #111827 0%, #06090e 100%)',
+        background: 'transparent',
       }}
     >
       {/* Navigation Header */}
@@ -102,12 +102,13 @@ export const PreviewStage: FC<PreviewStageProps> = ({
         style={{
           width: '100%',
           maxWidth: '680px',
-          background: 'rgba(17, 24, 39, 0.75)',
-          backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: '24px',
+          background: 'rgba(15, 23, 42, 0.82)',
+          backdropFilter: 'blur(35px) saturate(200%)',
+          WebkitBackdropFilter: 'blur(35px) saturate(200%)',
+          border: '1px solid rgba(255, 255, 255, 0.4)',
+          borderRadius: '26px',
           overflow: 'hidden',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.75)',
+          boxShadow: '0 30px 70px -15px rgba(2, 45, 80, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.25)',
         }}
       >
         <div
@@ -218,7 +219,6 @@ export const PreviewStage: FC<PreviewStageProps> = ({
                   flex: 1,
                   padding: '0.9rem',
                   fontSize: '1.05rem',
-                  background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
                 }}
                 disabled
               >
@@ -247,8 +247,6 @@ export const PreviewStage: FC<PreviewStageProps> = ({
                 width: '100%',
                 padding: '0.95rem',
                 fontSize: '1.05rem',
-                background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
               }}
               onClick={onFindStranger}
             >
