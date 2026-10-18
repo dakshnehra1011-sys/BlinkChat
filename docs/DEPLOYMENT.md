@@ -25,6 +25,7 @@ Configure these GitHub Actions values:
 
 - Actions secret `CLOUDFLARE_API_TOKEN`: permissions to deploy Workers, Pages, and apply D1 migrations.
 - Actions variable `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account that owns the Worker and Pages project.
+- Actions secrets `TURN_URLS`, `TURN_USERNAME`, and `TURN_CREDENTIAL`: Metered TURN relay configuration. The deploy workflow applies these to the Worker without putting credentials in source control. Use the exact server URLs shown in Metered's ICE server array if your credential is pinned to a region.
 
 Before the first deployment, set `JWT_SIGNING_SECRET` as a Cloudflare Worker secret and
 keep the same strong random value across releases so active sessions remain valid. Set
@@ -51,16 +52,7 @@ However, when users sit behind symmetric NATs or restrictive enterprise firewall
 1. Provision a TURN relay service (for example Metered, Twilio Network Traversal, or
    self-hosted Coturn). Cloudflare Workers and Pages do not provide a general purpose
    TURN relay; they only serve the app and signaling in this deployment.
-2. Configure one of these options on the Worker. Static TURN credentials can be set as:
-   ```bash
-   npx wrangler secret put TURN_URLS
-   npx wrangler secret put TURN_USERNAME
-   npx wrangler secret put TURN_CREDENTIAL
-   ```
-   For Metered, set `METERED_DOMAIN` and `METERED_API_KEY` as Worker bindings/secrets
-   instead; the API key must never be placed in the frontend. Static TURN credentials
-   should be short lived where the provider supports them. Verify `/api/config/ice`
-   returns `turnAvailable: true` and at least one `turn:` or `turns:` URL after deploy.
+2. Configure one of these options on the Worker. For static Metered TURN credentials, add `TURN_URLS`, `TURN_USERNAME`, and `TURN_CREDENTIAL` as GitHub Actions secrets; the `main` deployment workflow applies them to the Worker. For Metered's API integration, set `METERED_DOMAIN` and `METERED_API_KEY` as Worker bindings/secrets instead; the API key must never be placed in the frontend. Static TURN credentials should be short lived where the provider supports them. Verify `/api/config/ice` returns `turnAvailable: true` and at least one `turn:` or `turns:` URL after deploy.
 3. `RTCPeerConnection.getStats()` reports whether the selected path is direct or relayed.
 
 ---

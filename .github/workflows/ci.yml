@@ -91,6 +91,23 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
+      - name: Configure Metered TURN relay
+        shell: bash
+        run: |
+          if [[ -z "$TURN_URLS" || -z "$TURN_USERNAME" || -z "$TURN_CREDENTIAL" ]]; then
+            echo "::notice::TURN secrets are not configured; the app will use STUN only."
+            exit 0
+          fi
+          printf '%s' "$TURN_URLS" | bun run --cwd apps/worker wrangler secret put TURN_URLS
+          printf '%s' "$TURN_USERNAME" | bun run --cwd apps/worker wrangler secret put TURN_USERNAME
+          printf '%s' "$TURN_CREDENTIAL" | bun run --cwd apps/worker wrangler secret put TURN_CREDENTIAL
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          TURN_URLS: ${{ secrets.TURN_URLS }}
+          TURN_USERNAME: ${{ secrets.TURN_USERNAME }}
+          TURN_CREDENTIAL: ${{ secrets.TURN_CREDENTIAL }}
+
       - name: Deploy Cloudflare Worker & Durable Objects
         uses: cloudflare/wrangler-action@v3
         with:
