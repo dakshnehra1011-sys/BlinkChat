@@ -27,7 +27,9 @@ export const LandingView: FC<LandingViewProps> = ({ onStart, isLoggedIn }) => {
 
       <div className="features-grid">
         <div className="feature-card">
-          <Zap className="feature-icon" size={28} />
+          <div className="feature-icon-bubble">
+            <Zap size={24} />
+          </div>
           <h3 className="feature-title">Ultra-Low Latency</h3>
           <p className="feature-desc">
             Direct peer-to-peer media streaming powered by WebRTC delivers sub-100ms video frames
@@ -36,7 +38,9 @@ export const LandingView: FC<LandingViewProps> = ({ onStart, isLoggedIn }) => {
         </div>
 
         <div className="feature-card">
-          <Lock className="feature-icon" size={28} />
+          <div className="feature-icon-bubble">
+            <Lock size={24} />
+          </div>
           <h3 className="feature-title">Strict Privacy Architecture</h3>
           <p className="feature-desc">
             Video, audio, and messages flow strictly between the two connected browsers over
@@ -45,7 +49,9 @@ export const LandingView: FC<LandingViewProps> = ({ onStart, isLoggedIn }) => {
         </div>
 
         <div className="feature-card">
-          <Shield className="feature-icon" size={28} />
+          <div className="feature-icon-bubble">
+            <Shield size={24} />
+          </div>
           <h3 className="feature-title">Edge Matchmaking</h3>
           <p className="feature-desc">
             Cloudflare Workers and stateful Durable Objects manage matchmaking queues with
