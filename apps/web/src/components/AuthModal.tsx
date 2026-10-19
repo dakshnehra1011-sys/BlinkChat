@@ -5,14 +5,13 @@ import { getApiUrl } from '../lib/api';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (token: string, user: { id: string; email: string; emailVerified: boolean }) => void;
+  onSuccess: (token: string, user: { id: string; email: string }) => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [tab, setTab] = useState<'login' | 'register' | 'verify'>('login');
+  const [tab, setTab] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [verificationToken, setVerificationToken] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -36,39 +35,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         setError(data?.error || data?.message || `Registration failed (${res.status})`);
       } else {
         setSuccessMsg(data.message);
-        if (data.devToken) {
-          setVerificationToken(data.devToken);
-          setTab('verify');
-        }
-      }
-    } catch {
-      setError('Network error during registration. Please verify connection.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccessMsg(null);
-    setLoading(true);
-
-    try {
-      const res = await fetch(getApiUrl('/api/auth/verify-email'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: verificationToken }),
-      });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        setError(data?.error || data?.message || `Verification failed (${res.status})`);
-      } else {
-        setSuccessMsg(data.message);
         setTab('login');
       }
     } catch {
-      setError('Network error during verification. Please verify connection.');
+      setError('Network error during registration. Please verify connection.');
     } finally {
       setLoading(false);
     }
@@ -112,11 +82,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           }}
         >
           <h2 style={{ fontSize: '1.4rem', fontWeight: 700 }}>
-            {tab === 'login'
-              ? 'Welcome Back'
-              : tab === 'register'
-                ? 'Create Account'
-                : 'Verify Email'}
+            {tab === 'login' ? 'Welcome Back' : 'Create Account'}
           </h2>
           <button className="btn btn-secondary btn-icon" onClick={onClose}>
             <X size={18} />
@@ -151,16 +117,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             }}
           >
             Register
-          </button>
-          <button
-            className={`btn ${tab === 'verify' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ flex: 1, padding: '0.5rem' }}
-            onClick={() => {
-              setTab('verify');
-              setError(null);
-            }}
-          >
-            Verify
           </button>
         </div>
 
@@ -271,30 +227,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               disabled={loading}
             >
               {loading ? 'Creating account...' : 'Create Account'}
-            </button>
-          </form>
-        )}
-
-        {tab === 'verify' && (
-          <form onSubmit={handleVerify}>
-            <div className="form-group">
-              <label className="form-label">Verification Token</label>
-              <input
-                type="text"
-                required
-                className="form-input"
-                placeholder="Paste your verification code here"
-                value={verificationToken}
-                onChange={(e) => setVerificationToken(e.target.value)}
-              />
-            </div>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ width: '100%', marginTop: '0.5rem' }}
-              disabled={loading}
-            >
-              {loading ? 'Verifying...' : 'Verify Token'}
             </button>
           </form>
         )}

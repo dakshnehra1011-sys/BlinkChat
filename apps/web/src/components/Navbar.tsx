@@ -2,7 +2,7 @@ import { Home, LogIn, LogOut, Radio, ShieldCheck, Video, Zap } from 'lucide-reac
 import type { FC } from 'react';
 
 interface NavbarProps {
-  user: { email: string; emailVerified: boolean } | null;
+  user: { email: string } | null;
   isDirectConnection: boolean | null;
   activeView: 'home' | 'stage';
   onNavigateHome: () => void;

@@ -17,12 +17,6 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
-export const verifyEmailSchema = z.object({
-  token: z.string().min(1, 'Token is required'),
-});
-
-export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
-
 export const reportSchema = z.object({
   reportedUserId: z.string().min(1, 'Reported user ID is required'),
   reason: z.enum([
@@ -41,7 +35,6 @@ export type ReportInput = z.infer<typeof reportSchema>;
 export const userProfileSchema = z.object({
   id: z.string(),
   email: z.string().email(),
-  emailVerified: z.boolean(),
   createdAt: z.string(),
 });
 

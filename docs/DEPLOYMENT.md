@@ -28,9 +28,8 @@ Configure these GitHub Actions values:
 - Actions secrets `TURN_URLS`, `TURN_USERNAME`, and `TURN_CREDENTIAL`: Metered TURN relay configuration. The deploy workflow applies these to the Worker without putting credentials in source control. Use the exact server URLs shown in Metered's ICE server array if your credential is pinned to a region.
 
 Before the first deployment, set `JWT_SIGNING_SECRET` as a Cloudflare Worker secret and
-keep the same strong random value across releases so active sessions remain valid. Set
-`RESEND_API_KEY` and `EMAIL_FROM` in the Worker environment for production verification
-email delivery. Never put Worker secrets in the browser bundle.
+keep the same strong random value across releases so active sessions remain valid. Never
+put Worker secrets in the browser bundle.
 
 The Pages build uses `VITE_API_URL=https://blinkchat-worker.blinkchat.workers.dev`.
 Configure the Pages project and Worker route to match these production domains.
@@ -73,7 +72,7 @@ However, when users sit behind symmetric NATs or restrictive enterprise firewall
 ## 7. Staging Smoke-Test Checklist
 
 - [ ] Fresh visitor lands on Landing page, sees value prop and privacy policy.
-- [ ] User registers with new email, receives verification token, verifies account.
+- [ ] User registers with email and password, then logs in.
 - [ ] User enters Preview Stage; browser requests camera/microphone permissions.
 - [ ] Live mirrored preview displays local video; audio meter registers activity.
 - [ ] User enters Matchmaking Queue (WebSocket connected to `MatchmakerDO`).

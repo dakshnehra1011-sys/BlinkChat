@@ -166,16 +166,3 @@ export async function verifyJWT(token: string, secret: string): Promise<JWTPaylo
     return null;
   }
 }
-
-// Cryptographically random opaque tokens (e.g. for email verification)
-export function generateRandomToken(length = 32): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return base64UrlEncode(bytes);
-}
-
-// SHA-256 hash helper for indexing tokens safely
-export async function sha256(data: string): Promise<string> {
-  const enc = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(data));
-  return base64UrlEncode(new Uint8Array(hashBuffer));
-}

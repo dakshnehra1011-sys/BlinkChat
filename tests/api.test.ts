@@ -101,6 +101,16 @@ describe('Worker HTTP API Endpoints', () => {
     expect(res.status).toBe(401);
   });
 
+  it('removes the obsolete email verification endpoint', async () => {
+    const res = await app.request('/api/auth/verify-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(404);
+  });
+
   it('POST /api/reports returns 401 when unauthenticated', async () => {
     const res = await app.request('/api/reports', {
       method: 'POST',

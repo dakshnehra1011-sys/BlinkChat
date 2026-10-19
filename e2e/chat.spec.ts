@@ -106,7 +106,6 @@ test.describe('BlinkChat E2E Suite', () => {
         body: JSON.stringify({
           id: 'mobile-test',
           email: 'mobile@example.com',
-          emailVerified: true,
         }),
       })
     );
