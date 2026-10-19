@@ -1,14 +1,14 @@
 :root {
-  /* Sky Alpine / Clario Frosted Daylight Glassmorphism Palette */
-  --bg-primary: #0284c7;
+  /* Midnight chat palette with a colorful speech-bubble illustration. */
+  --bg-primary: #171a2d;
   --bg-gradient:
     linear-gradient(
       180deg,
-      rgba(2, 132, 199, 0.45) 0%,
-      rgba(254, 215, 170, 0.22) 55%,
-      rgba(253, 186, 116, 0.32) 100%
+      rgba(14, 20, 42, 0.5) 0%,
+      rgba(16, 22, 45, 0.58) 55%,
+      rgba(10, 15, 33, 0.66) 100%
     ),
-    url('/sky-bg.jpg') center bottom / cover no-repeat fixed;
+    url('/chat-bubbles-bg.svg') center / cover no-repeat fixed;
 
   --bg-secondary: rgba(255, 255, 255, 0.2);
   --bg-tertiary: rgba(255, 255, 255, 0.3);
@@ -63,7 +63,7 @@ html {
 body {
   font-family: var(--font-sans);
   background: var(--bg-gradient);
-  background-color: #0284c7;
+  background-color: #171a2d;
   color: var(--text-primary);
   height: 100%;
   min-height: 100dvh;
@@ -275,10 +275,8 @@ body {
   font-weight: 600;
   line-height: 1.12;
   letter-spacing: -0.025em;
-  color: #071936;
-  text-shadow:
-    0 2px 20px rgba(255, 255, 255, 0.8),
-    0 1px 2px rgba(255, 255, 255, 0.9);
+  color: #f8fbff;
+  text-shadow: 0 3px 24px rgba(3, 9, 24, 0.75);
   margin-bottom: 1.35rem;
 }
 
@@ -291,12 +289,12 @@ body {
 .landing-subtitle {
   font-family: var(--font-sans);
   font-size: 1.22rem;
-  color: #0f294a;
+  color: #e7edf8;
   font-weight: 500;
   line-height: 1.68;
   margin-bottom: 2.35rem;
   max-width: 680px;
-  text-shadow: 0 1px 12px rgba(255, 255, 255, 0.7);
+  text-shadow: 0 2px 16px rgba(5, 11, 27, 0.8);
 }
 
 /* Clario-style Floating Glass Window Mockup */

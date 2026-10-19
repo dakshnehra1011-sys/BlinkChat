@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <title>Colorful chat bubble background</title>
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#20213b"/>
+      <stop offset=".52" stop-color="#17263b"/>
+      <stop offset="1" stop-color="#25203b"/>
+    </linearGradient>
+    <radialGradient id="blue-glow" cx=".18" cy=".17" r=".72">
+      <stop stop-color="#20c8d4" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#20c8d4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pink-glow" cx=".86" cy=".76" r=".68">
+      <stop stop-color="#f14f88" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#f14f88" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="bubbles" width="960" height="720" patternUnits="userSpaceOnUse" patternTransform="translate(460 310)">
+      <g id="bubble-cluster">
+      <g stroke="#11182d" stroke-width="8" stroke-linejoin="round" stroke-linecap="round">
+        <g transform="translate(22 22) rotate(-7 78 55)">
+          <path fill="#16aeba" d="M24 5h104a23 23 0 0 1 23 23v44a23 23 0 0 1-23 23H76l-27 23 5-23H24A23 23 0 0 1 1 72V28A23 23 0 0 1 24 5Z"/>
+          <path fill="none" stroke="#b7f6eb" stroke-opacity=".7" stroke-width="3" d="M22 13h100a16 16 0 0 1 16 16v36"/>
+          <circle cx="52" cy="52" r="5" fill="#f5ffff" stroke="none"/><circle cx="78" cy="52" r="5" fill="#f5ffff" stroke="none"/><circle cx="104" cy="52" r="5" fill="#f5ffff" stroke="none"/>
+        </g>
+        <g transform="translate(270 2) rotate(5 75 48)">
+          <path fill="#f64d78" d="M22 5h106a22 22 0 0 1 22 22v39a22 22 0 0 1-22 22H73l-24 22 4-22H22A22 22 0 0 1 0 66V27A22 22 0 0 1 22 5Z"/>
+          <path fill="none" stroke="#ffd3dd" stroke-opacity=".7" stroke-width="3" d="M22 13h101a14 14 0 0 1 14 14v30"/>
+          <circle cx="51" cy="47" r="5" fill="#fff6f7" stroke="none"/><circle cx="76" cy="47" r="5" fill="#fff6f7" stroke="none"/><circle cx="101" cy="47" r="5" fill="#fff6f7" stroke="none"/>
+        </g>
+        <g transform="translate(155 148) rotate(4 72 50)">
+          <path fill="#ffba3b" d="M21 4h102a22 22 0 0 1 22 22v43a22 22 0 0 1-22 22H71l-25 22 5-22H21A22 22 0 0 1-1 69V26A22 22 0 0 1 21 4Z"/>
+          <path fill="none" stroke="#fff0bc" stroke-opacity=".8" stroke-width="3" d="M20 12h98a14 14 0 0 1 14 14v34"/>
+          <path fill="none" stroke="#573b32" stroke-width="5" d="M43 43h59M43 59h43"/>
+        </g>
+        <g transform="translate(5 214) rotate(5 70 45)">
+          <path fill="#f7f5ec" d="M20 4h98a22 22 0 0 1 22 22v34a22 22 0 0 1-22 22H71l-24 22 4-22H20A22 22 0 0 1-2 60V26A22 22 0 0 1 20 4Z"/>
+          <path fill="none" stroke="#c8d4dc" stroke-width="3" d="M20 12h94a14 14 0 0 1 14 14v25"/>
+          <path fill="none" stroke="#344358" stroke-width="5" d="M41 38h57M41 53h42"/>
+        </g>
+        <g transform="translate(310 178) rotate(-6 72 47)">
+          <path fill="#12aeb7" d="M21 4h101a22 22 0 0 1 22 22v39a22 22 0 0 1-22 22H73l-26 22 5-22H21A22 22 0 0 1-1 65V26A22 22 0 0 1 21 4Z"/>
+          <path fill="none" stroke="#b6f5ed" stroke-opacity=".72" stroke-width="3" d="M20 12h98a14 14 0 0 1 14 14v28"/>
+          <circle cx="50" cy="47" r="5" fill="#f5ffff" stroke="none"/><circle cx="75" cy="47" r="5" fill="#f5ffff" stroke="none"/><circle cx="100" cy="47" r="5" fill="#f5ffff" stroke="none"/>
+        </g>
+        <g transform="translate(208 284) rotate(-4 70 40)">
+          <path fill="#ed5a98" d="M20 3h96a21 21 0 0 1 21 21v34a21 21 0 0 1-21 21H70l-24 21 4-21H20A21 21 0 0 1-1 58V24A21 21 0 0 1 20 3Z"/>
+          <path fill="none" stroke="#ffd0e3" stroke-opacity=".72" stroke-width="3" d="M20 11h92a13 13 0 0 1 13 13v25"/>
+          <circle cx="48" cy="41" r="4.5" fill="#fff6fb" stroke="none"/><circle cx="72" cy="41" r="4.5" fill="#fff6fb" stroke="none"/><circle cx="96" cy="41" r="4.5" fill="#fff6fb" stroke="none"/>
+        </g>
+      </g>
+      <g fill="#ffd166" opacity=".88">
+        <circle cx="228" cy="39" r="6"/><circle cx="177" cy="119" r="4"/><circle cx="447" cy="135" r="5"/><circle cx="147" cy="312" r="5"/>
+      </g>
+      <g fill="#a9e7ef" opacity=".8"><circle cx="259" cy="126" r="4"/><circle cx="453" cy="294" r="6"/><circle cx="302" cy="139" r="3"/></g>
+      </g>
+      <use href="#bubble-cluster" transform="translate(480 360) rotate(4 240 180)"/>
+    </pattern>
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#0a1228" stop-opacity=".06"/>
+      <stop offset="1" stop-color="#0a1228" stop-opacity=".38"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#night)"/>
+  <rect width="1600" height="1000" fill="url(#blue-glow)"/>
+  <rect width="1600" height="1000" fill="url(#pink-glow)"/>
+  <rect width="1600" height="1000" fill="url(#bubbles)" opacity=".9"/>
+  <rect width="1600" height="1000" fill="url(#shade)"/>
+</svg>
