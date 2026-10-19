@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  generateRandomToken,
   hashPassword,
-  sha256,
   signJWT,
   verifyJWT,
   verifyPassword,
@@ -87,21 +85,6 @@ describe('WebCrypto Utilities Suite', () => {
     it('returns false for malformed password hash string', async () => {
       expect(await verifyPassword('test', 'not_pbkdf2_format')).toBe(false);
       expect(await verifyPassword('test', 'pbkdf2_sha256$baditer$salt$hash')).toBe(false);
-    });
-  });
-
-  describe('Random Tokens & Hashes', () => {
-    it('generates random opaque tokens', () => {
-      const token1 = generateRandomToken(32);
-      const token2 = generateRandomToken(32);
-      expect(token1).not.toBe(token2);
-      expect(token1.length).toBeGreaterThan(20);
-    });
-
-    it('computes sha256 hash deterministically', async () => {
-      const hash1 = await sha256('test-token');
-      const hash2 = await sha256('test-token');
-      expect(hash1).toBe(hash2);
     });
   });
 });

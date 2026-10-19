@@ -17,7 +17,7 @@
 - **Cloudflare Durable Objects**: Distributed stateful actors for:
   - `MatchmakerDO`: Queue management, pairing algorithm, deduplication, timeout handling
   - `SignalingDO`: Ephemeral WebRTC session coordination, offer/answer exchange, ICE relay, participant verification
-- **Cloudflare D1**: Distributed SQLite relational database for users, sessions, verification tokens, reports, blocks
+- **Cloudflare D1**: Distributed SQLite relational database for users, sessions, reports, and blocks
 - **Drizzle ORM & Drizzle Kit**: Type-safe schema definition and migration manager
 - **Local Emulator**: Wrangler / Miniflare
 

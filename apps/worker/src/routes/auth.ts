@@ -1,18 +1,10 @@
-import { emailVerifications, users } from '@blinkchat/database';
-import { loginSchema, registerSchema, verifyEmailSchema } from '@blinkchat/shared';
+import { users } from '@blinkchat/database';
+import { loginSchema, registerSchema } from '@blinkchat/shared';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { Hono } from 'hono';
 import type { Env } from '../types.js';
-import {
-  generateRandomToken,
-  hashPassword,
-  sha256,
-  signJWT,
-  verifyJWT,
-  verifyPassword,
-} from '../utils/crypto.js';
-import { sendVerificationEmail } from '../utils/email.js';
+import { hashPassword, signJWT, verifyJWT, verifyPassword } from '../utils/crypto.js';
 
 export const authRoutes = new Hono<{ Bindings: Env }>();
 
@@ -30,11 +22,7 @@ authRoutes.post('/register', async (c) => {
   // Check if user already exists
   const existing = await db.select().from(users).where(eq(users.email, email)).get();
   if (existing) {
-    // Return generic message to avoid email enumeration
-    return c.json(
-      { message: 'If this email is not registered, a verification link has been sent.' },
-      200
-    );
+    return c.json({ message: 'If an account exists for this email, please log in.' }, 200);
   }
 
   const userId = crypto.randomUUID();
@@ -44,77 +32,11 @@ authRoutes.post('/register', async (c) => {
     id: userId,
     email,
     passwordHash,
-    emailVerified: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
 
-  // Create verification token (expires in 24 hours)
-  const token = generateRandomToken(32);
-  const tokenHash = await sha256(token);
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
-  await db.insert(emailVerifications).values({
-    id: crypto.randomUUID(),
-    userId,
-    tokenHash,
-    expiresAt,
-    createdAt: new Date().toISOString(),
-  });
-
-  // Dispatch verification email
-  const baseUrl = c.req.header('origin') || 'http://localhost:5173';
-  await sendVerificationEmail(
-    { to: email, subject: 'Verify your BlinkChat account', verificationToken: token, baseUrl },
-    c.env.RESEND_API_KEY,
-    c.env.EMAIL_FROM
-  );
-
-  return c.json(
-    {
-      message: 'Registration successful. Please check your email to verify your account.',
-      devToken: c.env.ENVIRONMENT === 'development' ? token : undefined,
-    },
-    201
-  );
-});
-
-// Verify email address
-authRoutes.post('/verify-email', async (c) => {
-  const body = await c.req.json().catch(() => null);
-  const parsed = verifyEmailSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: 'Validation failed', details: parsed.error.issues }, 400);
-  }
-
-  const { token } = parsed.data;
-  const db = drizzle(c.env.DB);
-  const tokenHash = await sha256(token);
-
-  const record = await db
-    .select()
-    .from(emailVerifications)
-    .where(eq(emailVerifications.tokenHash, tokenHash))
-    .get();
-  if (!record) {
-    return c.json({ error: 'Invalid or expired verification token' }, 400);
-  }
-
-  if (new Date(record.expiresAt) < new Date()) {
-    await db.delete(emailVerifications).where(eq(emailVerifications.id, record.id));
-    return c.json({ error: 'Verification token has expired' }, 400);
-  }
-
-  // Mark user as verified
-  await db
-    .update(users)
-    .set({ emailVerified: true, updatedAt: new Date().toISOString() })
-    .where(eq(users.id, record.userId));
-
-  // Delete used token
-  await db.delete(emailVerifications).where(eq(emailVerifications.id, record.id));
-
-  return c.json({ message: 'Email successfully verified! You can now log in.' }, 200);
+  return c.json({ message: 'Account created. You can now log in.' }, 201);
 });
 
 // Login
@@ -151,7 +73,6 @@ authRoutes.post('/login', async (c) => {
     user: {
       id: user.id,
       email: user.email,
-      emailVerified: Boolean(user.emailVerified),
     },
   });
 });
@@ -178,7 +99,6 @@ authRoutes.get('/me', async (c) => {
   return c.json({
     id: user.id,
     email: user.email,
-    emailVerified: Boolean(user.emailVerified),
     createdAt: user.createdAt,
   });
 });

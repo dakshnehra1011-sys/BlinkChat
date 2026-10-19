@@ -2,7 +2,7 @@ import { type Browser, expect, type Page, test } from '@playwright/test';
 
 const api = 'http://localhost:8787';
 
-async function createVerifiedAccount(email: string) {
+async function createAccount(email: string) {
   const password = 'BlinkChat-e2e-Password-42!';
   const register = await fetch(`${api}/api/auth/register`, {
     method: 'POST',
@@ -11,17 +11,8 @@ async function createVerifiedAccount(email: string) {
   });
   expect(register.status, `register ${email}`).toBe(201);
   const registration = await register.json();
-  expect(
-    registration.devToken,
-    'worker must run in development mode for E2E verification'
-  ).toBeTruthy();
-
-  const verify = await fetch(`${api}/api/auth/verify-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token: registration.devToken }),
-  });
-  expect(verify.ok, `verify ${email}`).toBeTruthy();
+  expect(registration.devToken).toBeUndefined();
+  expect(registration.message).toContain('log in');
 
   const login = await fetch(`${api}/api/auth/login`, {
     method: 'POST',
@@ -110,9 +101,7 @@ test.describe('real WebRTC sessions through the local Cloudflare Worker', () => 
   }) => {
     const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const tokens = await Promise.all(
-      ['a', 'b', 'c', 'd'].map((suffix) =>
-        createVerifiedAccount(`e2e-${stamp}-${suffix}@example.com`)
-      )
+      ['a', 'b', 'c', 'd'].map((suffix) => createAccount(`e2e-${stamp}-${suffix}@example.com`))
     );
     const peers: Awaited<ReturnType<typeof openPeer>>[] = [];
     try {

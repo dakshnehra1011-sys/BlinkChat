@@ -22,7 +22,6 @@ export function App() {
   const { data: user = null } = useQuery<{
     id: string;
     email: string;
-    emailVerified: boolean;
   } | null>({
     queryKey: ['currentUser', token],
     queryFn: async () => {
@@ -61,10 +60,7 @@ export function App() {
     toggleVideo,
   } = useWebRTC(token, user?.id || null);
 
-  const handleAuthSuccess = (
-    newToken: string,
-    newUser: { id: string; email: string; emailVerified: boolean }
-  ) => {
+  const handleAuthSuccess = (newToken: string, newUser: { id: string; email: string }) => {
     setToken(newToken);
     localStorage.setItem('blinkchat_token', newToken);
     queryClient.setQueryData(['currentUser', newToken], newUser);

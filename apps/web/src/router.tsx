@@ -13,14 +13,7 @@ const indexRoute = createRoute({
   component: App,
 });
 
-// Verify email route (direct link from registration verification emails)
-const verifyRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/verify-email',
-  component: App,
-});
-
-const routeTree = rootRoute.addChildren([indexRoute, verifyRoute]);
+const routeTree = rootRoute.addChildren([indexRoute]);
 
 export const router = createRouter({ routeTree });
 

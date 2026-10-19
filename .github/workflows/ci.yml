@@ -50,7 +50,7 @@ jobs:
       - name: Prepare local Worker for real WebRTC E2E
         shell: bash
         run: |
-          printf 'JWT_SIGNING_SECRET=%s\nENVIRONMENT=development\n' 'blinkchat-ci-only-jwt-secret-32-characters-minimum' > apps/worker/.dev.vars
+          printf 'JWT_SIGNING_SECRET=%s\n' 'blinkchat-ci-only-jwt-secret-32-characters-minimum' > apps/worker/.dev.vars
           bun run db:migrate:local
 
       - name: Browser End-to-End Tests

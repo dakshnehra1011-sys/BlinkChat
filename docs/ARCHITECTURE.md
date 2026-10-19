@@ -55,11 +55,10 @@ BlinkChat is a one-to-one peer-to-peer video chat application. Workers and Durab
 
 - **Runtime**: Cloudflare Workers
 - **Router**: Hono
-- **Authentication**: JWT/Bearer session tokens, password hashing with PBKDF2/WebCrypto (compatible with edge runtime), email verification workflow, and rate-limiting
+- **Authentication**: JWT/Bearer session tokens and password hashing with PBKDF2/WebCrypto (compatible with edge runtime)
 - **Endpoints**:
   - `POST /api/auth/register`
   - `POST /api/auth/login`
-  - `POST /api/auth/verify-email`
   - `GET /api/auth/me`
   - `POST /api/reports`
   - `GET /api/ws/match` (WebSocket endpoint upgrading authenticated users and attaching to Durable Objects)
@@ -79,7 +78,6 @@ BlinkChat is a one-to-one peer-to-peer video chat application. Workers and Durab
 
 - **Engine**: Cloudflare D1 (SQLite) with Drizzle ORM
 - **Tables**:
-  - `users`: `id`, `email`, `password_hash`, `email_verified`, `created_at`, `updated_at`
-  - `email_verifications`: `id`, `user_id`, `token_hash`, `expires_at`
+  - `users`: `id`, `email`, `password_hash`, `created_at`, `updated_at`
   - `sessions`: `id`, `user_id`, `token_hash`, `expires_at`, `revoked_at`
   - `reports`: `id`, `reporter_id`, `reported_peer_id`, `reason`, `created_at`
